@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'self'">
+  <title>سیستم مدیریت لابراتوار</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- Login -->
+  <div id="login">
+    <form class="loginCard" id="loginForm" autocomplete="off">
+      <div class="loginLogo" id="loginLogo"></div>
+      <h1 id="loginLabName">سیستم مدیریت لابراتوار</h1>
+      <p>Laboratory Information System — برای ادامه وارد شوید</p>
+      <label class="field"><span>نام کاربری</span><input id="loginUser" value="admin" autocomplete="username"></label>
+      <label class="field"><span>رمز عبور</span><input id="loginPass" type="password" autocomplete="current-password"></label>
+      <button class="btn primary" type="submit">ورود به سیستم</button>
+      <div class="loginErr" id="loginErr"></div>
+      <div class="loginHint" id="loginHint"></div>
+    </form>
+  </div>
+
+  <!-- Application shell -->
+  <div id="app" class="hidden">
+    <header id="topbar">
+      <div class="brand">
+        <div class="brandIcon" id="brandIcon"></div>
+        <div><strong id="brandName">لابراتوار</strong><small id="brandNameEn">Laboratory Information System</small></div>
+      </div>
+      <div class="topSearch">
+        <input id="globalSearch" type="search" placeholder="جستجوی سریع: نام مریض، شماره پذیرش یا تلفن… (Ctrl+K)">
+        <span id="gsIcon"></span>
+        <div class="dropdown hidden" id="globalResults"></div>
+      </div>
+      <div class="topRight">
+        <span class="clock" id="clock"></span>
+        <button class="topBtn" id="alertsBtn" title="هشدارها"><span id="alertsIcon"></span><i class="badge hidden" id="alertsBadge">0</i></button>
+        <div class="userChip"><div class="avatar" id="avatar">م</div><div><div id="userName">—</div><div class="small" style="opacity:.75" id="userRole"></div></div></div>
+        <button class="topBtn" id="logoutBtn">خروج</button>
+      </div>
+    </header>
+    <nav id="sidebar"></nav>
+    <main id="view"></main>
+  </div>
+
+  <div id="modals"></div>
+  <div id="toasts"></div>
+  <div id="printArea"></div>
+
+  <script src="vendor/chart.umd.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/barcode.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/catalog.js"></script>
+  <script src="js/docs.js"></script>
+  <script src="js/pages/dashboard.js"></script>
+  <script src="js/pages/reception.js"></script>
+  <script src="js/pages/orders.js"></script>
+  <script src="js/pages/results.js"></script>
+  <script src="js/pages/patients.js"></script>
+  <script src="js/pages/tests.js"></script>
+  <script src="js/pages/sales.js"></script>
+  <script src="js/pages/finance.js"></script>
+  <script src="js/pages/inventory.js"></script>
+  <script src="js/pages/doctors.js"></script>
+  <script src="js/pages/users.js"></script>
+  <script src="js/pages/settings.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
