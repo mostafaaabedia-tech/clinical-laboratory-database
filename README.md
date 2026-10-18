@@ -13,6 +13,8 @@ A complete **desktop Laboratory Information System (LIS)** for Windows (also Lin
 | **Windows zip** | `ClinicalLab-x.y.z-win-x64.zip` — unzip and run `Clinical Laboratory System.exe` |
 | **Linux** | `*.AppImage` — artifact **ClinicalLab-Linux** |
 
+**Windows 7 / 32-bit:** use the `-ia32` files (built with Electron 22, the last version that supports Windows 7/8). The `-x64` files run on 64-bit Windows 7+.
+
 First login: **admin / 1234** (you are asked to change it immediately).
 
 ## Features

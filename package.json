@@ -20,7 +20,7 @@
     "sql.js": "^1.15.0"
   },
   "devDependencies": {
-    "electron": "^33.4.11",
+    "electron": "22.3.27",
     "electron-builder": "^26.0.0",
     "chart.js": "^4.5.1",
     "@fontsource/vazirmatn": "^5.3.0"
@@ -59,10 +59,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Clinical Laboratory System",
-      "artifactName": "ClinicalLab-Setup-${version}.exe"
+      "artifactName": "ClinicalLab-Setup-${version}-${arch}.exe"
     },
     "portable": {
-      "artifactName": "ClinicalLab-Portable-${version}.exe"
+      "artifactName": "ClinicalLab-Portable-${version}-${arch}.exe"
     },
     "linux": {
       "icon": "assets/icon.png",
