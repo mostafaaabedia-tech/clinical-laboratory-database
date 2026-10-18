@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS sample_types (
 CREATE TABLE IF NOT EXISTS tests (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   code           TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  num_code       INTEGER,                              -- numeric reception code, e.g. 401 = CBC
   name           TEXT NOT NULL,
   name_fa        TEXT,
   department_id  INTEGER REFERENCES departments(id) ON DELETE SET NULL,

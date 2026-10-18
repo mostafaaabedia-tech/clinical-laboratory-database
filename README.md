@@ -18,7 +18,7 @@ First login: **admin / 1234** (you are asked to change it immediately).
 ## Features
 
 **Daily work**
-- **Reception** — new or returning patient (search by name / phone / file no.), age in years-months-days, referring doctor, urgent flag, test search by code or name with keyboard (↑ ↓ Enter), quick buttons for common tests, full catalog browser, discount (amount or %), partial payment, receipt and **barcode sample labels**.
+- **Reception** — new or returning patient (search by name / phone / file no.), age in years-months-days, referring doctor, urgent flag, test search by numeric code (401 = CBC), letter code or name with keyboard (↑ ↓ Enter), quick buttons for common tests, full catalog browser, discount (amount or %), partial payment, receipt and **barcode sample labels**.
 - **Worklist & result entry** — pending / ready-to-approve / approved queues, urgent first. Grouped result sheet per panel, **automatic calculations** (MCV, MCH, MCHC, absolute counts, indirect bilirubin, globulin, A/G ratio, BUN, eGFR CKD-EPI 2021, LDL/VLDL, anion gap, TSAT, INR, HOMA-IR, eAG, ACR, PSA ratio…), live **H / L / critical (HH/LL) / abnormal** flags, **sex- and age-specific reference ranges**, previous result of the same patient (delta check), per-test comments, “Normal” button for urine/stool, `*` = not done.
 - **Approval workflow** — registered → sampled → in progress → completed → **approved (locked)** → delivered. Un-approving needs a reason and is logged.
 - **A4 report** (print / PDF) with lab logo, barcode, patient box, CBC + differential side by side, flags, comments, signature. Receipt (80 mm) and tube labels.

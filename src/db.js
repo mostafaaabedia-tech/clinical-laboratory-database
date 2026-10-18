@@ -155,9 +155,38 @@ class LabDatabase {
   migrate() {
     const v = Number(this.scalarSafe("SELECT value FROM settings WHERE key='schema_version'") || 0);
     if (v < SCHEMA_VERSION) {
-      // future migrations go here: if (v < 2) { ... }
+      if (v < 2) {
+        if (!this.all('PRAGMA table_info(tests)').some(c => c.name === 'num_code')) this.db.run('ALTER TABLE tests ADD COLUMN num_code INTEGER');
+        this.assignNumCodes();
+      }
       this.db.run("INSERT OR REPLACE INTO settings(key,value) VALUES('schema_version',?)", [String(SCHEMA_VERSION)]);
     }
+  }
+  // Numeric reception codes: department n gets 400+100*n+1, +2 ... (HEM: CBC = 401). Panels first, then single tests.
+  assignNumCodes() {
+    this.db.run('CREATE UNIQUE INDEX IF NOT EXISTS ux_tests_num_code ON tests(num_code) WHERE num_code IS NOT NULL');
+    const used = new Set(this.all('SELECT num_code FROM tests WHERE num_code IS NOT NULL').map(r => r.num_code));
+    const deps = this.all('SELECT id FROM departments ORDER BY sort, id');
+    const groups = deps.map((d, i) => [d.id, 400 + i * 100]);
+    groups.push([null, 9000]);
+    for (const [did, base] of groups) {
+      const rows = this.all(`SELECT id FROM tests WHERE num_code IS NULL AND ${did === null ? 'department_id IS NULL' : 'department_id=' + did} ORDER BY is_panel DESC, orderable DESC, sort, id`);
+      let n = base;
+      for (const r of rows) {
+        do { n++; } while (used.has(n));
+        used.add(n);
+        this.db.run('UPDATE tests SET num_code=? WHERE id=?', [n, r.id]);
+      }
+    }
+  }
+  nextNumCode(departmentId) {
+    const deps = this.all('SELECT id FROM departments ORDER BY sort, id');
+    const i = deps.findIndex(d => d.id === Number(departmentId));
+    const base = i < 0 ? 9000 : 400 + i * 100;
+    const mx = this.scalar('SELECT MAX(num_code) FROM tests WHERE num_code > ? AND num_code <= ?', [base, base + 99]);
+    let n = (mx || base) + 1;
+    while (this.scalar('SELECT 1 FROM tests WHERE num_code=?', [n])) n++;
+    return n;
   }
   scalarSafe(sql) { try { return this.scalar(sql); } catch (_) { return null; } }
 
@@ -209,6 +238,7 @@ class LabDatabase {
           this.db.run('INSERT OR IGNORE INTO panel_items(panel_id,test_id,sort) VALUES(?,?,?)', [ids[x.code.toUpperCase()], tid, i + 1]);
         });
       }
+      this.assignNumCodes();
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');

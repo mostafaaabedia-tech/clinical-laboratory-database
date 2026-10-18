@@ -16,14 +16,14 @@ const { SCHEMA } = require('../src/schema');
 
   const q = (v) => v === null || v === undefined ? 'NULL' : typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`;
   const dump = (table, cols) => db.all(`SELECT ${cols.join(',')} FROM ${table} ORDER BY 1`).map(r => `INSERT INTO ${table}(${cols.join(',')}) VALUES(${cols.map(c => q(r[c])).join(',')});`).join('\n');
-  const testCols = ['id', 'code', 'name', 'name_fa', 'department_id', 'sample_type_id', 'is_panel', 'orderable', 'result_type', 'options', 'unit', 'decimals', 'ref_low', 'ref_high', 'ref_text', 'critical_low', 'critical_high', 'formula', 'method', 'price', 'cost', 'tat_hours', 'sort', 'active'];
+  const testCols = ['id', 'code', 'num_code', 'name', 'name_fa', 'department_id', 'sample_type_id', 'is_panel', 'orderable', 'result_type', 'options', 'unit', 'decimals', 'ref_low', 'ref_high', 'ref_text', 'critical_low', 'critical_high', 'formula', 'method', 'price', 'cost', 'tat_hours', 'sort', 'active'];
   const seed = ['-- Default test catalog (departments, sample types, tests, panels, reference ranges)', 'BEGIN;',
     dump('departments', ['id', 'code', 'name', 'name_fa', 'sort']), dump('sample_types', ['id', 'code', 'name', 'name_fa', 'container']),
     dump('tests', testCols), dump('panel_items', ['panel_id', 'test_id', 'sort']),
     dump('reference_ranges', ['id', 'test_id', 'sex', 'age_min_days', 'age_max_days', 'low', 'high', 'text']), 'COMMIT;'].join('\n\n');
   fs.writeFileSync(path.join(outDir, 'seed-catalog.sql'), seed + '\n');
 
-  const rows = db.all(`SELECT t.code, t.name, t.name_fa, d.name dept, s.name sample, t.is_panel, t.orderable, t.result_type, t.unit, t.ref_low, t.ref_high, t.ref_text, t.critical_low, t.critical_high, t.formula, t.price,
+  const rows = db.all(`SELECT t.num_code, t.code, t.name, t.name_fa, d.name dept, s.name sample, t.is_panel, t.orderable, t.result_type, t.unit, t.ref_low, t.ref_high, t.ref_text, t.critical_low, t.critical_high, t.formula, t.price,
     (SELECT GROUP_CONCAT(c.code, ' ') FROM panel_items pi JOIN tests c ON c.id=pi.test_id WHERE pi.panel_id=t.id) components
     FROM tests t LEFT JOIN departments d ON d.id=t.department_id LEFT JOIN sample_types s ON s.id=t.sample_type_id ORDER BY t.sort`);
   const cols = Object.keys(rows[0]);

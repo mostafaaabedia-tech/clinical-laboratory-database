@@ -22,7 +22,7 @@ Pages.tests = {
           <button data-d="orderable">قابل فروش <small>${cnt(t => t.orderable && t.active)}</small></button>
           <button data-d="inactive">غیرفعال <small>${cnt(t => !t.active)}</small></button>
           <div class="navGroup">بخش‌ها</div>
-          ${Catalog.depts.map(d => `<button data-d="${d.id}">${esc(d.name_fa || d.name)} <small>${cnt(t => t.department_id === d.id && t.active)}</small></button>`).join('')}
+          ${Catalog.depts.map(d => `<button data-d="${d.id}">${esc(d.name_fa || d.name)} <small>${cnt(t => t.department_id === d.id && t.active)}</small>${canEdit ? `<span class="deptEdit" data-editdept="${d.id}" title="ویرایش بخش">${icon('edit', 14)}</span>` : ''}</button>`).join('')}
         </div></div>
         <div style="min-width:0">
           <div class="card row" style="padding:10px 12px"><input id="tl_q" class="grow" placeholder="جستجو بر اساس کد یا نام…" value="${esc(st.q)}" style="max-width:420px">
@@ -38,7 +38,7 @@ Pages.tests = {
         if (st.dept === 'panels' && !t.is_panel) return false;
         if (st.dept === 'orderable' && !t.orderable) return false;
         if (!['all', 'panels', 'inactive', 'orderable'].includes(st.dept) && t.department_id !== Number(st.dept)) return false;
-        return !q || (t.code + ' ' + t.name + ' ' + (t.name_fa || '')).toLowerCase().includes(q);
+        return !q || ((t.num_code ?? '') + ' ' + t.code + ' ' + t.name + ' ' + (t.name_fa || '')).toLowerCase().includes(q);
       });
     };
     const draw = () => {
@@ -48,7 +48,7 @@ Pages.tests = {
       $('#tl_body', view).innerHTML = rows.slice(0, 600).map(t => {
         const rg = resolveRange(t, 'M', 30 * 365);
         const ref = t.is_panel ? `${Catalog.leaves(t.id).length} پارامتر` : refDisplay(t, rg);
-        return `<tr><td><span class="codeTag">${esc(t.code)}</span></td>
+        return `<tr><td><span class="codeTag">${esc(t.num_code ?? '')}</span><div class="small en muted">${esc(t.code)}</div></td>
           <td class="en tName"><b title="${esc(t.name)}">${esc(t.name)}</b><div class="small">${t.is_panel ? '<span class="pill info">Panel</span> ' : ''}${t.formula ? '<span class="pill violet" title="' + esc(t.formula) + '">calc</span> ' : ''}${!t.orderable ? '<span class="pill" title="فقط داخل پنل">component</span> ' : ''}${t.name_fa ? `<span class="muted">${esc(t.name_fa)}</span>` : ''}</div></td>
           <td>${canEdit ? `<input class="priceInput ${pending.has(t.id) ? 'changed' : ''}" type="number" min="0" data-price="${t.id}" value="${pending.has(t.id) ? pending.get(t.id) : t.price}">` : `<span class="num">${money(t.price)}</span>`}</td>
           <td class="c">${sold.get(t.id) || ''}</td>
@@ -59,7 +59,7 @@ Pages.tests = {
       }).join('') || '<tr><td colspan="9" class="empty">آزمایشی پیدا نشد</td></tr>';
     };
     $('#tl_q', view).addEventListener('input', debounce(() => { st.q = $('#tl_q', view).value.trim(); draw(); }, 150));
-    $('#tl_depts', view).addEventListener('click', (e) => { const b = e.target.closest('button[data-d]'); if (b) { st.dept = b.dataset.d; draw(); } });
+    $('#tl_depts', view).addEventListener('click', (e) => { const ed = e.target.closest('[data-editdept]'); if (ed) { e.stopPropagation(); manageDepartments(Number(ed.dataset.editdept)); return; } const b = e.target.closest('button[data-d]'); if (b) { st.dept = b.dataset.d; draw(); } });
     view.addEventListener('input', (e) => {
       const el = e.target.closest('[data-price]'); if (!el) return;
       const id = Number(el.dataset.price), t = Catalog.byId.get(id), v = Number(el.value);
@@ -99,7 +99,8 @@ async function testEditor(id, isPanelNew, duplicate = false) {
   const m = modal({ title: `${editing ? 'ویرایش' : 'تعریف'} ${isPanel ? 'پنل / پروفایل' : 'آزمایش'} ${editing ? '— ' + esc(t.code) : ''}`, size: 'wide', body: `
     <div class="tabs"><button class="on" data-tab="g">مشخصات</button>${isPanel ? '<button data-tab="c">اجزای پنل</button>' : '<button data-tab="r">محدوده‌های مرجع</button>'}<button data-tab="i">مواد مصرفی</button></div>
     <div data-pane="g"><div class="formGrid">
-      <label class="field"><span>کد <em>*</em></span><input name="code" value="${esc(t.code)}" class="ltr"></label>
+      <label class="field"><span>کد عددی (پذیرش)</span><input name="num_code" type="number" value="${editing || duplicate ? (duplicate ? Catalog.nextNumCode(t.department_id) : t.num_code ?? '') : Catalog.nextNumCode(t.department_id)}" class="ltr"></label>
+      <label class="field"><span>کد انگلیسی <em>*</em></span><input name="code" value="${esc(t.code)}" class="ltr"></label>
       <label class="field span2"><span>نام (انگلیسی) <em>*</em></span><input name="name" value="${esc(t.name)}" class="ltr" style="text-align:left"></label>
       <label class="field"><span>نام دری</span><input name="name_fa" value="${esc(t.name_fa || '')}"></label>
       <label class="field"><span>بخش</span><select name="department_id">${Catalog.depts.map(d => opt(d.id, t.department_id) + esc(d.name_fa || d.name) + '</option>').join('')}</select></label>
@@ -208,9 +209,12 @@ async function testEditor(id, isPanelNew, duplicate = false) {
     const dupe = Catalog.byCode.get(v.code.toUpperCase());
     if (dupe && dupe.id !== (editing ? id : -1)) return toast('این کد قبلاً استفاده شده است', 'bad');
     if (isPanel && !comps.length) return toast('حداقل یک پارامتر به پنل اضافه کنید', 'bad');
+    const nc = v.num_code === '' || v.num_code == null ? null : Math.trunc(Number(v.num_code));
+    if (nc !== null && (!(nc > 0))) return toast('کد عددی نادرست است', 'bad');
+    if (nc !== null) { const d2 = Catalog.tests.find(x => x.num_code === nc); if (d2 && d2.id !== (editing ? id : -1)) return toast(`کد عددی ${nc} برای «${d2.name}» استفاده شده است`, 'bad'); }
     const options = (v.options || '').split('\n').map(s => s.trim()).filter(Boolean);
     if (v.formula) { try { const vals = {}; (v.formula.match(/\{([^}]+)\}/g) || []).forEach(k => vals[k.slice(1, -1).toUpperCase()] = 1); evalFormula(v.formula, vals, { AGE: 30, FEMALE: 0, ISI: 1, PTC: 12 }); } catch (e) { return toast('فرمول نادرست است: ' + e.message, 'bad'); } }
-    const cols = { code: v.code, name: v.name, name_fa: v.name_fa || null, department_id: Number(v.department_id) || null, sample_type_id: Number(v.sample_type_id) || null,
+    const cols = { code: v.code, num_code: nc, name: v.name, name_fa: v.name_fa || null, department_id: Number(v.department_id) || null, sample_type_id: Number(v.sample_type_id) || null,
       is_panel: isPanel ? 1 : 0, orderable: v.orderable, active: v.active, result_type: isPanel ? 'text' : v.result_type, options: options.length ? JSON.stringify(options) : null,
       unit: v.unit || null, decimals: num(v.decimals), ref_low: num(v.ref_low), ref_high: num(v.ref_high), ref_text: v.ref_text || null, critical_low: num(v.critical_low), critical_high: num(v.critical_high),
       formula: v.formula || null, method: v.method || null, cost: Number(v.cost) || 0, tat_hours: Number(v.tat_hours) || 24, notes: v.notes || null };
@@ -301,15 +305,27 @@ function printPriceList() {
   $('[data-pdf]', m.el).onclick = () => printDoc(html, { pdf: 'price-list' }).catch(errToast);
 }
 
-async function manageDepartments() {
-  const m = modal({ title: 'بخش‌های لابراتوار', size: 'wide', body: `<div class="tableWrap"><table class="t"><thead><tr><th>کد</th><th>نام انگلیسی</th><th>نام دری</th><th>ترتیب</th><th></th></tr></thead><tbody id="dp_body"></tbody></table></div>
+async function manageDepartments(focusId) {
+  const m = modal({ title: 'بخش‌های لابراتوار', size: 'wide', body: `<div class="tableWrap"><table class="t"><thead><tr><th>کد</th><th>نام انگلیسی</th><th>نام دری</th><th>ترتیب</th><th>آزمایش</th><th></th></tr></thead><tbody id="dp_body"></tbody></table></div>
     <div class="formGrid" style="margin-top:12px"><input id="dp_code" placeholder="کد (مثلاً GEN)" class="ltr"><input id="dp_name" placeholder="Name" class="ltr"><input id="dp_fa" placeholder="نام دری"><button class="btn primary" id="dp_add">${icon('plus', 16)} افزودن بخش</button></div>` });
-  const draw = () => { $('#dp_body', m.el).innerHTML = Catalog.depts.map(d => `<tr data-id="${d.id}"><td><span class="codeTag">${esc(d.code)}</span></td><td><input data-k="name" value="${esc(d.name)}" class="ltr"></td><td><input data-k="name_fa" value="${esc(d.name_fa || '')}"></td><td><input data-k="sort" type="number" value="${d.sort}" style="width:70px"></td><td><button class="btn sm" data-save="${d.id}">ذخیره</button></td></tr>`).join(''); };
+  const count = (id) => Catalog.tests.filter(t => t.department_id === id).length;
+  const draw = () => {
+    $('#dp_body', m.el).innerHTML = Catalog.depts.map(d => `<tr data-id="${d.id}" ${d.id === focusId ? 'style="background:var(--primary-weak,#e8f1ff)"' : ''}><td><input data-k="code" value="${esc(d.code)}" class="ltr" style="width:80px"></td><td><input data-k="name" value="${esc(d.name)}" class="ltr"></td><td><input data-k="name_fa" value="${esc(d.name_fa || '')}"></td><td><input data-k="sort" type="number" value="${d.sort}" style="width:70px"></td><td class="c">${count(d.id)}</td><td class="nowrap"><button class="btn sm primary" data-save="${d.id}">${icon('edit', 14)} ذخیره</button> <button class="btn sm ghost dangerText" data-del="${d.id}" title="حذف بخش">${icon('x', 14)}</button></td></tr>`).join('');
+    if (focusId) $(`tr[data-id="${focusId}"]`, m.el)?.scrollIntoView({ block: 'center' });
+  };
   draw();
   m.el.addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-save]'); if (!b) return;
-    const tr = b.closest('tr'); const g = k => $(`[data-k="${k}"]`, tr).value;
-    try { await lab.run('UPDATE departments SET name=?, name_fa=?, sort=? WHERE id=?', [g('name'), g('name_fa'), Number(g('sort')) || 0, Number(b.dataset.save)]); await Catalog.load(); toast('ذخیره شد', 'good'); } catch (err) { errToast(err); }
+    const sv = e.target.closest('[data-save]'), dl = e.target.closest('[data-del]');
+    if (sv) {
+      const tr = sv.closest('tr'); const g = k => $(`[data-k="${k}"]`, tr).value.trim();
+      if (!g('code') || !g('name')) return toast('کد و نام لازم است', 'bad');
+      try { await lab.run('UPDATE departments SET code=?, name=?, name_fa=?, sort=? WHERE id=?', [g('code').toUpperCase(), g('name'), g('name_fa'), Number(g('sort')) || 0, Number(sv.dataset.save)]); await lab.audit('update', 'department', Number(sv.dataset.save), g('name')); await Catalog.load(); toast('ذخیره شد', 'good'); } catch (err) { errToast(err); }
+    } else if (dl) {
+      const id = Number(dl.dataset.del), d = Catalog.deptById.get(id), n = count(id);
+      if (n) return toast(`این بخش ${n} آزمایش دارد؛ ابتدا آزمایش‌ها را به بخش دیگر منتقل کنید`, 'bad');
+      if (!confirm(`بخش «${d.name_fa || d.name}» حذف شود؟`)) return;
+      try { await lab.run('DELETE FROM departments WHERE id=?', [id]); await lab.audit('delete', 'department', id, d.name); await Catalog.load(); draw(); toast('بخش حذف شد', 'good'); } catch (err) { errToast(err); }
+    }
   });
   $('#dp_add', m.el).onclick = async () => {
     const c = $('#dp_code', m.el).value.trim().toUpperCase(), n = $('#dp_name', m.el).value.trim();

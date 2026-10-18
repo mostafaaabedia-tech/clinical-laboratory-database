@@ -24,6 +24,14 @@ const Catalog = {
     this.depts = depts; this.deptById = new Map(depts.map(d => [d.id, d]));
     this.samples = samples; this.sampleById = new Map(samples.map(s => [s.id, s]));
   },
+  nextNumCode(deptId) {
+    const i = this.depts.findIndex(d => d.id === Number(deptId));
+    const base = i < 0 ? 9000 : 400 + i * 100;
+    const used = new Set(this.tests.map(t => t.num_code));
+    let n = Math.max(base, ...this.tests.map(t => t.num_code > base && t.num_code <= base + 99 ? t.num_code : 0)) + 1;
+    while (used.has(n)) n++;
+    return n;
+  },
   dept(t) { return this.deptById.get(t?.department_id) || null; },
   deptName(t) { const d = this.dept(t); return d ? (d.name_fa || d.name) : '—'; },
   sample(t) { return this.sampleById.get(t?.sample_type_id) || null; },
@@ -39,7 +47,8 @@ const Catalog = {
     q = String(q || '').trim().toLowerCase(); if (!q) return [];
     const list = this.orderable();
     const score = (t) => {
-      const c = t.code.toLowerCase(), n = t.name.toLowerCase(), f = (t.name_fa || '').toLowerCase();
+      const c = t.code.toLowerCase(), n = t.name.toLowerCase(), f = (t.name_fa || '').toLowerCase(), nc = t.num_code == null ? '' : String(t.num_code);
+      if (nc && nc === q) return 0; if (nc && /^\d+$/.test(q) && nc.startsWith(q)) return 1;
       if (c === q) return 0; if (c.startsWith(q)) return 1; if (n.startsWith(q)) return 2;
       if (n.includes(q) || f.includes(q)) return 3; if (c.includes(q)) return 4; return 99;
     };

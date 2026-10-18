@@ -308,3 +308,6 @@ table.rt td.memo { white-space: pre-wrap; }
 .dropdown .ddItem { color: var(--text); }
 .tName { max-width: 330px; }
 .tName b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; vertical-align: bottom; }
+.deptEdit { opacity: 0; display: inline-flex; align-items: center; padding: 0 4px; border-radius: 6px; color: var(--primary, #2563eb); }
+.deptList button:hover .deptEdit { opacity: 1; }
+.deptEdit:hover { background: var(--surface-2); }

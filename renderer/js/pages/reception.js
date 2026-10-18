@@ -29,7 +29,7 @@ Pages.reception = {
         </div>
         <div class="card">
           <div class="cardHead"><h2>آزمایش‌ها</h2><button class="btn sm" data-act="browse">${icon('orders', 14)} مرور فهرست کامل</button></div>
-          <div class="searchBox"><input id="tSearch" placeholder="کد یا نام آزمایش را بنویسید و Enter بزنید (مثلاً CBC ، Vitamin D)" autocomplete="off" class="ltr" style="text-align:left"><div class="dropdown hidden" id="tResults"></div></div>
+          <div class="searchBox"><input id="tSearch" placeholder="کد آزمایش را بنویسید و Enter بزنید (مثلاً 401 = CBC) — یا نام آزمایش" autocomplete="off" class="ltr" style="text-align:left"><div class="dropdown hidden" id="tResults"></div></div>
           <div class="quick">${QUICK.map(c => Catalog.byCode.get(c)).filter(Boolean).map(t => `<button class="chip" data-act="quick" data-id="${t.id}" title="${esc(t.name)}">${esc(t.code)}</button>`).join('')}</div>
           <div class="selList" id="selList"></div>
           <div class="totals">
@@ -60,7 +60,7 @@ Pages.reception = {
       box.innerHTML = st.sel.length ? st.sel.map(id => {
         const t = Catalog.byId.get(id);
         const n = t.is_panel ? Catalog.leaves(id).length : 0;
-        return `<div class="selRow"><span class="codeTag">${esc(t.code)}</span><span class="nm">${esc(t.name)}${n ? ` <small class="muted">(${n} items)</small>` : ''}</span><small class="muted">${esc(Catalog.deptName(t))}</small><b class="num">${money(t.price)}</b><button class="btn ghost icon dangerText" data-act="rm" data-id="${id}" title="حذف">${icon('x', 16)}</button></div>`;
+        return `<div class="selRow"><span class="codeTag">${esc(t.num_code ?? t.code)}</span><span class="nm">${esc(t.name)}${n ? ` <small class="muted">(${n} items)</small>` : ''}</span><small class="muted">${esc(Catalog.deptName(t))}</small><b class="num">${money(t.price)}</b><button class="btn ghost icon dangerText" data-act="rm" data-id="${id}" title="حذف">${icon('x', 16)}</button></div>`;
       }).join('') : '<div class="empty">هنوز آزمایشی انتخاب نشده است</div>';
       const x = net();
       $('#tGross', view).textContent = money(x.gross);
@@ -119,7 +119,7 @@ Pages.reception = {
     const showHits = () => {
       const box = $('#tResults', view);
       if (!hits.length) { box.classList.add('hidden'); return; }
-      box.innerHTML = hits.map((t, i) => `<div class="ddItem ${i === active ? 'active' : ''}" data-id="${t.id}"><span class="code">${esc(t.code)}</span><span class="nm">${esc(t.name)}${t.is_panel ? ' <span class="pill info">Panel</span>' : ''}</span><small class="muted">${esc(Catalog.deptName(t))}</small><span class="pr">${money(t.price)}</span></div>`).join('');
+      box.innerHTML = hits.map((t, i) => `<div class="ddItem ${i === active ? 'active' : ''}" data-id="${t.id}"><span class="code">${esc(t.num_code ?? '')}</span><span class="nm">${esc(t.name)} <small class="muted en">${esc(t.code)}</small>${t.is_panel ? ' <span class="pill info">Panel</span>' : ''}</span><small class="muted">${esc(Catalog.deptName(t))}</small><span class="pr">${money(t.price)}</span></div>`).join('');
       box.classList.remove('hidden');
       $$('.ddItem', box).forEach(el => el.onmousedown = (e) => { e.preventDefault(); add(Number(el.dataset.id)); clearSearch(); });
     };
@@ -195,7 +195,7 @@ function browseTests(onPick, { preselected = [] } = {}) {
   const draw = () => {
     const q = $('#bt_q', m.el).value.trim().toLowerCase();
     const list = Catalog.orderable().filter(t => (!dept || t.department_id === dept) && (!q || (t.code + ' ' + t.name + ' ' + (t.name_fa || '')).toLowerCase().includes(q)));
-    $('#bt_body', m.el).innerHTML = list.map(t => `<tr class="clickable" data-id="${t.id}"><td><input type="checkbox" ${chosen.has(t.id) ? 'checked' : ''}></td><td><span class="codeTag">${esc(t.code)}</span></td><td class="en">${esc(t.name)} ${t.is_panel ? '<span class="pill info">Panel</span>' : ''}</td><td class="small muted en">${esc(Catalog.sample(t)?.name || '')}</td><td class="num">${money(t.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">موردی نیست</td></tr>';
+    $('#bt_body', m.el).innerHTML = list.map(t => `<tr class="clickable" data-id="${t.id}"><td><input type="checkbox" ${chosen.has(t.id) ? 'checked' : ''}></td><td><span class="codeTag">${esc(t.num_code ?? t.code)}</span></td><td class="en">${esc(t.name)} ${t.is_panel ? '<span class="pill info">Panel</span>' : ''}</td><td class="small muted en">${esc(Catalog.sample(t)?.name || '')}</td><td class="num">${money(t.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">موردی نیست</td></tr>';
     $('#bt_cnt', m.el).textContent = `${chosen.size} مورد انتخاب شده`;
   };
   $('#bt_depts', m.el).innerHTML = `<button class="on" data-d="0">همه <small>${Catalog.orderable().length}</small></button>` + Catalog.depts.map(d => `<button data-d="${d.id}">${esc(d.name_fa || d.name)} <small>${Catalog.orderable().filter(t => t.department_id === d.id).length}</small></button>`).join('');
