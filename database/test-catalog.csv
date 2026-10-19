@@ -267,7 +267,7 @@
 1601,IGE,Total IgE,,Allergy,Serum,0,1,numeric,IU/mL,0,100,,,,,600,
 1602,ALLF,Allergy Panel - Food (Specific IgE),,Allergy,Serum,0,1,memo,,,,No significant sensitization,,,,4000,
 1603,ALLI,Allergy Panel - Inhalant (Specific IgE),,Allergy,Serum,0,1,memo,,,,No significant sensitization,,,,4000,
-1714,UCOL,Colour,,Urinalysis,Urine (Random),0,0,option,,,,Pale yellow,,,,0,
+1714,UCOL,Colour,,Urinalysis,Urine (Random),0,0,option,,,,Pale yellow / Yellow,,,,0,
 1715,UAPP,Appearance,,Urinalysis,Urine (Random),0,0,option,,,,Clear,,,,0,
 1716,USG,Specific Gravity,,Urinalysis,Urine (Random),0,0,numeric,,1.005,1.03,,,,,0,
 1717,UPH,pH,,Urinalysis,Urine (Random),0,0,numeric,,4.5,8,,,,,0,

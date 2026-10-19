@@ -14,7 +14,7 @@ async function loadOrderFull(id) {
   const res = new Map(results.map(r => [r.test_id, r]));
   // previous results of the same patient (latest earlier order) for delta check
   const prevRows = await lab.all(`SELECT r.test_id, r.value, r.flag, o.created_at FROM results r JOIN orders o ON o.id=r.order_id
-    WHERE o.patient_id=? AND o.id<>? AND o.created_at<=? AND o.status IN ('completed','approved','delivered') ORDER BY o.created_at DESC`, [order.patient_id, id, order.created_at]);
+    WHERE o.patient_id=? AND o.id<>? AND o.created_at<=? AND r.value<>'*' AND o.status IN ('completed','approved','delivered') ORDER BY o.created_at DESC`, [order.patient_id, id, order.created_at]);
   const prev = new Map(); prevRows.forEach(r => { if (!prev.has(r.test_id)) prev.set(r.test_id, r); });
   return { order, patient, doctor, items, results: res, payments, prev };
 }
@@ -29,7 +29,7 @@ function labHeader(compact = false) {
 function patientBox(o, p, doc) {
   const cells = [
     ['Patient', `<bdi>${esc(p.full_name)}</bdi>`], ['Order No', `<b>${esc(o.order_no)}</b>`], ['MRN', esc(p.mrn)],
-    ['Father', `<bdi>${esc(p.father_name || '—')}</bdi>`], ['Age / Sex', `${ageLabelEn(o.age_days)} / ${sexEn(p.sex)}`], ['Phone', esc(p.phone || '—')],
+    ['Father', `<bdi>${esc(p.father_name || '—')}</bdi>`], ['Age / Sex', `${ageLabelEn(o.age_days)} / ${catEn(o, p)}`], ['Phone', esc(p.phone || '—')],
     ['Referred by', `<bdi>${esc(doc ? doc.name : 'Self')}</bdi>`], ['Registered', esc(fmtDateTimeNum(o.created_at))], ['Reported', esc(o.approved_at ? fmtDateTimeNum(o.approved_at) : (o.completed_at ? fmtDateTimeNum(o.completed_at) : '—'))]
   ];
   return `<div class="ptBox">${cells.map(c => `<div><span>${c[0]}:</span> <b>${c[1]}</b></div>`).join('')}</div>`;
@@ -66,11 +66,20 @@ function reportHTML(data) {
           <table class="rt"><tr><th>Differential</th><th>Result</th><th>Ref.</th></tr>${diff.map(d2).join('')}</table></div></div>`;
       }
     }
+    // urine / stool: physical & chemical on one side, microscopic on the other side
+    const micro = rows.filter(t => t.section === 'micro'), mac = rows.filter(t => t.section !== 'micro');
+    if (micro.length && mac.length) {
+      const d1 = { ...data, showPrev: false };
+      const h2 = (title) => `<tr><th style="width:42%">${title}</th><th>Result</th><th>Unit</th><th>Ref.</th></tr>`;
+      return `<div class="rSec"><h3>${esc(g.dept?.name || '')}${g.panel ? ' — ' + esc(g.title) : ''}</h3><div class="twoCol">
+        <table class="rt">${h2('Physical / Chemical')}${mac.map(t => resultRowHTML(t, results.get(t.id), d1)).join('')}</table>
+        <table class="rt">${h2('Microscopic')}${micro.map(t => resultRowHTML(t, results.get(t.id), d1)).join('')}</table></div></div>`;
+    }
     return `<div class="rSec"><h3>${esc(g.dept?.name || '')}${g.panel ? ' — ' + esc(g.title) : ''}</h3><table class="rt">${head()}${rows.map(t => resultRowHTML(t, results.get(t.id), data)).join('')}</table></div>`;
   }).join('');
   const comments = [...results.values()].filter(r => r.comment).map(r => `<div>• <b>${esc(Catalog.byId.get(r.test_id)?.name || '')}:</b> ${esc(r.comment)}</div>`).join('');
   const s = App.settings;
-  return `<div class="doc">${labHeader()}
+  return `<div class="doc report" style="${reportDocStyle()}">${s.print_letterhead === '1' ? '' : labHeader()}
     <div style="display:flex;justify-content:space-between;align-items:center"><div class="docTitle" style="text-align:left">LABORATORY REPORT</div><div>${barcodeSVG(o.order_no, { height: 26, module: 1.1 })}</div></div>
     ${patientBox(o, p, doc)}
     ${sections || '<p style="text-align:center;color:#777">No results entered yet.</p>'}
@@ -117,10 +126,10 @@ function labelsHTML(data) {
     <div>${esc(x.s ? x.s.name : '')} · ${esc(fmtDateNum(o.created_at))}</div><div style="font-size:7px">${esc(x.codes.join(', '))}</div></div>`).join('')}</div>`;
 }
 
-async function printDoc(html, { pdf = null } = {}) {
+async function printDoc(html, { pdf = null, pageSize = null } = {}) {
   const area = $('#printArea');
   area.innerHTML = html;
   await new Promise(r => setTimeout(r, 120));
-  try { if (pdf) await lab.printPdf(pdf); else await lab.print(); }
+  try { if (pdf) await lab.printPdf(pdf, false, pageSize); else await lab.print(pageSize); }
   finally { setTimeout(() => { area.innerHTML = ''; }, 300); }
 }

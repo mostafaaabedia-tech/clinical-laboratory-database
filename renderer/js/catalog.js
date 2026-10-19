@@ -16,7 +16,8 @@ const Catalog = {
     this.tests = tests;
     this.byId = new Map(); this.byCode = new Map(); this.children = new Map(); this.ranges = new Map();
     for (const t of tests) {
-      try { t.optionList = t.options ? JSON.parse(t.options) : []; } catch (_) { t.optionList = []; }
+      let raw = []; try { raw = t.options ? JSON.parse(t.options) : []; } catch (_) { raw = []; }
+      t.optionsRaw = raw; t.opts = parseOptions(raw); t.optionList = t.opts.map(o => o.value);
       this.byId.set(t.id, t); this.byCode.set(String(t.code).toUpperCase(), t);
     }
     for (const r of items) { if (!this.children.has(r.panel_id)) this.children.set(r.panel_id, []); this.children.get(r.panel_id).push(r.test_id); }

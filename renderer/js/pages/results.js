@@ -20,7 +20,7 @@ Pages.results = {
         <button data-act="tab" data-t="approved" class="${tab === 'approved' ? 'on' : ''}">تأیید شده (۳ روز اخیر)</button></div>
       <div class="card" style="padding:0"><div class="tableWrap" style="border:0"><table class="t"><thead><tr><th>شماره</th><th class="c">روزانه</th><th>زمان ثبت</th><th>مریض</th><th>آزمایش‌ها</th><th class="c">نتایج ثبت‌شده</th><th>پرداخت</th><th>وضعیت</th><th></th></tr></thead><tbody>
       ${rows.map(o => `<tr class="clickable" data-act="enter" data-id="${o.id}"><td><span class="codeTag">${esc(o.order_no)}</span> ${o.priority === 'urgent' ? '<span class="pill bad">عاجل</span>' : ''}</td><td class="c num">${o.daily_no ?? ''}</td>
-        <td class="small">${esc(fmtDateTime(o.created_at))}</td><td><b>${esc(o.patient_name)}</b> <span class="small muted">${sexFa(o.sex)}</span></td>
+        <td class="small">${esc(fmtDateTime(o.created_at))}</td><td><b>${esc(o.patient_name)}</b> <span class="small muted">${catFa(o)}</span></td>
         <td class="small en">${esc(o._tests || '')}</td><td class="c">${o.entered}</td><td>${payPill(o)}</td><td>${statusPill(o.status)}</td>
         <td class="nowrap">${tab === 'completed' && can('approve') ? `<button class="btn sm success" data-act="approve" data-id="${o.id}">${icon('check', 14)} تأیید</button> ` : ''}<button class="btn sm" data-act="${tab === 'pending' ? 'enter' : 'preview'}" data-id="${o.id}">${tab === 'pending' ? 'ثبت نتیجه' : 'راپور'}</button></td></tr>`).join('') || '<tr><td colspan="9" class="empty">موردی در این صف نیست ✓</td></tr>'}
       </tbody></table></div></div>`;
@@ -53,17 +53,17 @@ async function resultEntry(view, orderId) {
     const dis = locked ? 'disabled' : '';
     if (t.formula) return `<input data-tid="${t.id}" class="calc" readonly tabindex="-1" value="${esc(v)}" title="${esc(t.formula)}">`;
     if (t.result_type === 'memo') return `<textarea data-tid="${t.id}" rows="2" ${dis} style="direction:ltr;text-align:left">${esc(v)}</textarea>`;
-    if (t.result_type === 'option') return `<input data-tid="${t.id}" list="dl${t.id}" value="${esc(v)}" ${dis} autocomplete="off"><datalist id="dl${t.id}">${t.optionList.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+    if (t.result_type === 'option') return `<input data-tid="${t.id}" data-opt="1" value="${esc(v)}" ${dis} autocomplete="off" placeholder="کد یا متن" title="${esc(t.opts.map(o => o.code + ' = ' + o.value).join('  |  '))}">`;
     return `<input data-tid="${t.id}" value="${esc(v)}" ${dis} autocomplete="off" ${t.result_type === 'numeric' ? 'inputmode="decimal"' : ''}>`;
   };
   view.innerHTML = `
     <div class="pageHead"><div><h1>ثبت نتایج — <span class="codeTag" style="font-size:18px">${esc(o.order_no)}</span></h1>
-      <p><b>${esc(p.full_name)}</b> · ولد ${esc(p.father_name || '—')} · ${sexFa(p.sex)} · ${ageLabel(o.age_days)} · ${esc(data.doctor?.name || 'خودمراجعه')} · ${statusPill(o.status)} ${o.notes ? '· یادداشت: ' + esc(o.notes) : ''}</p></div>
+      <p><b>${esc(p.full_name)}</b> · ولد ${esc(p.father_name || '—')} · ${catFa(o, p)} · ${ageLabel(o.age_days)} · ${esc(data.doctor?.name || 'خودمراجعه')} · ${statusPill(o.status)} ${o.notes ? '· یادداشت: ' + esc(o.notes) : ''}</p></div>
       <div class="toolbar"><button class="btn" data-act="back">بازگشت به صف</button><button class="btn" data-act="preview">${icon('eye', 16)} پیش‌نمایش</button>
-      ${!locked ? `<button class="btn primary" data-act="draft">ذخیره موقت</button><button class="btn success" data-act="complete">${icon('check', 16)} تکمیل نتایج</button>` : ''}
+      ${!locked ? `<button class="btn" data-act="starAll" title="همه خانه‌های خالی ستاره (*) می‌شوند؛ بعد فقط نتایج لازم را وارد کنید">✱ ستاره همه</button><button class="btn ghost" data-act="unstar">پاک کردن ستاره‌ها</button><button class="btn primary" data-act="draft">ذخیره موقت</button><button class="btn success" data-act="complete">${icon('check', 16)} تکمیل نتایج</button>` : ''}
       ${o.status === 'completed' && can('approve') ? `<button class="btn success" data-act="approve">${icon('lock', 16)} تأیید نهایی</button>` : ''}
       ${locked && o.status !== 'cancelled' && can('approve') ? `<button class="btn" data-act="unapprove">${icon('unlock', 16)} لغو تأیید برای اصلاح</button>` : ''}</div></div>
-    ${locked ? '<div class="warnBox">این راپور تأیید شده و قفل است. برای اصلاح، ابتدا تأیید را لغو کنید.</div>' : '<div class="infoBox small">Enter = خانه بعدی · خانه‌های خاکستری خودکار محاسبه می‌شوند · «*» یعنی انجام نشد (با Enter بقیه خانه‌های خالی همان گروه هم * می‌شوند) · دکمه «طبیعی» خانه‌های خالی گزینه‌ای را با مقدار نرمال پر می‌کند.</div>'}
+    ${locked ? '<div class="warnBox">این راپور تأیید شده و قفل است. برای اصلاح، ابتدا تأیید را لغو کنید.</div>' : '<div class="infoBox small">Enter = خانه بعدی · خانه‌های گزینه‌ای (مثل ادرار) را با <b>کد</b> (مثلاً 2) یا تایپ متن پر کنید · «*» = لازم نیست، در راپور چاپ نمی‌شود (با Enter بقیه خانه‌های خالی همان گروه هم * می‌شوند) · «ستاره همه» همه را * می‌کند تا فقط نتایج لازم را وارد کنید · خانه‌های خاکستری خودکار محاسبه می‌شوند.</div>'}
     ${groups.map(g => `<div class="resGroup"><div class="resGroupHead"><span>${esc(g.title)} <small class="muted">${esc(g.dept?.name || '')}</small></span>
       ${!locked && g.items.some(t => t.result_type !== 'numeric' && t.ref_text) ? `<button class="btn sm" data-act="normal" data-g="${g.key}">طبیعی (Normal)</button>` : ''}</div>
       <table class="res" data-g="${g.key}"><thead><tr><th>Test</th><th>Result</th><th>Flag</th><th>Unit</th><th>Reference</th><th>Previous</th><th></th></tr></thead><tbody>
@@ -98,12 +98,53 @@ async function resultEntry(view, orderId) {
     const diff = Catalog.byCode.get('DIFFT');
     if (diff && field(diff.id) && field(diff.id).value && Math.abs(Number(field(diff.id).value) - 100) > 1) field(diff.id).closest('tr').classList.add('abn');
   };
+  // ---- option results: popup with codes (type the code or the text) ----
+  const pop = document.createElement('div'); pop.className = 'dropdown optPop hidden'; view.appendChild(pop);
+  let popFor = null, popHits = [], popActive = 0;
+  const popMatches = (t, q) => {
+    q = String(q || '').trim().toLowerCase();
+    if (!q || q === '*') return t.opts;
+    if (/^\d+$/.test(q)) { const byCode = t.opts.filter(o => o.code.startsWith(q)); if (byCode.length) return byCode; }
+    return t.opts.filter(o => o.value.toLowerCase().includes(q));
+  };
+  const drawPop = () => {
+    if (!popFor || !popHits.length) { pop.classList.add('hidden'); return; }
+    pop.innerHTML = popHits.map((o, i) => `<div class="ddItem ${i === popActive ? 'active' : ''}" data-i="${i}"><span class="code">${esc(o.code)}</span><span class="nm">${esc(o.value)}</span></div>`).join('');
+    const r = popFor.getBoundingClientRect(); const below = window.innerHeight - r.bottom > 240;
+    pop.style.position = 'fixed'; pop.style.left = r.left + 'px'; pop.style.right = 'auto'; pop.style.width = Math.max(240, r.width) + 'px';
+    pop.style.top = below ? (r.bottom + 2) + 'px' : 'auto'; pop.style.bottom = below ? 'auto' : (window.innerHeight - r.top + 2) + 'px';
+    pop.classList.remove('hidden');
+    $('.ddItem.active', pop)?.scrollIntoView({ block: 'nearest' });
+  };
+  const openPop = (el) => { popFor = el; const t = Catalog.byId.get(Number(el.dataset.tid)); popHits = popMatches(t, el.value === '*' ? '' : el.value); popActive = 0; drawPop(); };
+  const closePop = () => { popFor = null; pop.classList.add('hidden'); };
+  // turn a typed code into the option text
+  const resolveOpt = (el, preferPopup) => {
+    const t = Catalog.byId.get(Number(el.dataset.tid)); const v = el.value.trim();
+    if (!v || v === '*') return;
+    const exact = t.opts.find(o => o.code === v) || t.opts.find(o => o.value.toLowerCase() === v.toLowerCase());
+    if (exact) el.value = exact.value;
+    else if (preferPopup && popFor === el && popHits[popActive]) el.value = popHits[popActive].value;
+  };
+  pop.addEventListener('mousedown', (e) => {
+    const it = e.target.closest('.ddItem'); if (!it || !popFor) return; e.preventDefault();
+    const el = popFor; el.value = popHits[Number(it.dataset.i)].value; closePop(); recalc();
+    const list = inputs().filter(x => !x.readOnly); const nx = list[list.indexOf(el) + 1]; if (nx) { nx.focus(); nx.select && nx.select(); }
+  });
+  view.addEventListener('scroll', () => { if (popFor) drawPop(); }, true);
+  view.addEventListener('focusin', (e) => { const el = e.target; if (el.matches && el.matches('[data-tid]')) { if (el.value.trim() === '*') el.select(); if (el.dataset.opt && !locked) openPop(el); else closePop(); } });
+  view.addEventListener('focusout', (e) => { const el = e.target; if (el.matches && el.matches('[data-opt]')) { resolveOpt(el, false); setTimeout(() => { if (popFor === el) closePop(); }, 120); recalc(); } });
+
   if (!locked) {
-    view.addEventListener('input', (e) => { if (e.target.matches('[data-tid]')) recalc(); });
+    view.addEventListener('input', (e) => { if (e.target.matches('[data-tid]')) { if (e.target.dataset.opt) openPop(e.target); recalc(); } });
     view.addEventListener('keydown', (e) => {
       const el = e.target; if (!el.matches('[data-tid]') || el.tagName === 'TEXTAREA') return;
+      if (e.key === 'Escape' && popFor) { closePop(); return; }
       if (e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && el.list) return; // let datalist navigate
+      if (el.dataset.opt && popFor === el && popHits.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault(); popActive = Math.max(0, Math.min(popHits.length - 1, popActive + (e.key === 'ArrowDown' ? 1 : -1))); drawPop(); return;
+      }
+      if (e.key === 'Enter' && el.dataset.opt) { resolveOpt(el, true); closePop(); recalc(); }
       e.preventDefault();
       if (e.key === 'Enter' && el.value.trim() === '*') {
         $$('[data-tid]', el.closest('table')).forEach(x => { if (!x.readOnly && x.tagName !== 'BUTTON' && !x.value.trim()) x.value = '*'; });
@@ -116,9 +157,8 @@ async function resultEntry(view, orderId) {
   }
   const collect = () => allTests.map(t => {
     const el = field(t.id); let v = el ? el.value.trim() : '';
-    if (v === '*') v = '';
     const rg = rangeOf.get(t.id);
-    return { test_id: t.id, value: v, num_value: t.result_type === 'numeric' ? num(v) : null, flag: computeFlag(t, v, rg), ref_display: refDisplay(t, rg), unit: t.unit, comment: comments.get(t.id) || null };
+    return { test_id: t.id, value: v, num_value: t.result_type === 'numeric' && v !== '*' ? num(v) : null, flag: computeFlag(t, v, rg), ref_display: refDisplay(t, rg), unit: t.unit, comment: comments.get(t.id) || null };
   });
   const save = async (status) => {
     recalc();
@@ -141,7 +181,9 @@ async function resultEntry(view, orderId) {
     draft: () => save('in_progress'), complete: () => save('completed'),
     approve: async () => { await approveOrder(orderId); go('results', { order: orderId }); },
     unapprove: async () => { await unapproveOrder(orderId); go('results', { order: orderId }); },
-    normal: (el) => { $$('[data-tid]', $(`table[data-g="${el.dataset.g}"]`, view)).forEach(x => { if (x.tagName === 'BUTTON' || x.readOnly || x.value.trim()) return; const t = Catalog.byId.get(Number(x.dataset.tid)); if (t.result_type !== 'numeric' && t.ref_text) x.value = t.ref_text; }); recalc(); },
+    starAll: () => { inputs().forEach(x => { if (!x.readOnly && !x.disabled && !x.value.trim()) x.value = '*'; }); recalc(); toast('همه خانه‌های خالی ستاره شد — اکنون نتایج لازم را وارد کنید'); const f = inputs().find(x => !x.readOnly && x.value === '*'); if (f) { f.focus(); f.select(); } },
+    unstar: () => { inputs().forEach(x => { if (!x.readOnly && x.value.trim() === '*') x.value = ''; }); recalc(); },
+    normal: (el) => { $$('[data-tid]', $(`table[data-g="${el.dataset.g}"]`, view)).forEach(x => { if (x.tagName === 'BUTTON' || x.readOnly || (x.value.trim() && x.value.trim() !== '*')) return; const t = Catalog.byId.get(Number(x.dataset.tid)); if (t.result_type !== 'numeric' && t.ref_text) x.value = String(t.ref_text).split(/\s*[\/|]\s*/)[0]; }); recalc(); },
     comment: async (el) => { const id = Number(el.dataset.ctid); const v = await promptDlg('یادداشت برای این آزمایش', { label: Catalog.byId.get(id).name, value: comments.get(id) || '' }); if (v !== null) { comments.set(id, v.trim()); $(`[data-cmt="${id}"]`, view).textContent = v.trim(); } }
   });
   recalc();

@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('lab', {
   addPayment: (id, amount, method, note) => call('order:pay', id, amount, method, note),
   saveResults: (id, results, status) => call('results:save', id, results, status),
   setPrice: (id, price) => call('test:setPrice', id, price),
+  deleteOrder: (id, reason) => call('order:delete', id, reason),
   audit: (action, entity, id, detail) => call('audit', action, entity, id, detail),
 
   settings: () => call('settings:all'),
@@ -44,6 +45,12 @@ contextBridge.exposeInMainWorld('lab', {
 
   saveText: (name, content, ext) => call('file:saveText', name, content, ext),
   pickImage: () => call('file:pickImage'),
-  printPdf: (name, landscape) => call('print:pdf', name, landscape),
-  print: () => call('print:print')
+  printPdf: (name, landscape, pageSize) => call('print:pdf', name, landscape, pageSize),
+  print: (pageSize) => call('print:print', pageSize),
+  sharePdf: (name, pageSize) => call('share:pdf', name, pageSize),
+  openLink: (url) => call('share:open', url),
+  showFile: (p) => call('share:showFile', p),
+  copyText: (t) => call('share:copy', t),
+  telegramSend: (chatId, file, caption) => call('telegram:send', chatId, file, caption),
+  telegramUpdates: () => call('telegram:updates')
 });

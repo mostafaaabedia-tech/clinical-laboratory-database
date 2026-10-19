@@ -9,6 +9,7 @@ process.chdir(path.join(__dirname, '..'));
 require('../main.js');
 
 const errors = [];
+let check0;
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
 app.on('browser-window-created', (_e, win) => {
@@ -18,6 +19,7 @@ app.on('browser-window-created', (_e, win) => {
   win.webContents.once('did-finish-load', async () => {
     const js = (code) => win.webContents.executeJavaScript(code);
     const shot = async (name) => { await wait(900); const img = await win.webContents.capturePage(); fs.writeFileSync(path.join(out, name + '.png'), img.toPNG()); console.log('shot', name); };
+    check0 = async (name, code) => { const r = await js(code); console.log((r === true ? 'PASS ' : 'FAIL ') + name + (r === true ? '' : ' → ' + JSON.stringify(r))); if (r !== true) errors.push('CHECK ' + name); };
     try {
       win.setSize(1440, 920);
       await wait(800);
@@ -36,9 +38,11 @@ app.on('browser-window-created', (_e, win) => {
       const pages = ['dashboard', 'orders', 'results', 'patients', 'tests', 'sales', 'finance', 'inventory', 'doctors', 'users', 'audit', 'settings'];
       for (const p of pages) { await js(`go('${p}')`); await shot('page-' + p); }
       await js(`go('reception')`); await wait(500);
-      await js(`(()=>{const v=document.getElementById('view'); document.getElementById('f_name').value='فاطمه احمدی'; document.getElementById('f_father').value='محمد'; document.getElementById('f_sex').value='F'; const ay=document.getElementById('f_ay'); ay.value='34'; ay.dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('f_phone').value='0799123456';
-        ['CBC','LFT','VITD','TSH'].forEach(c=>{const b=[...v.querySelectorAll('.chip')].find(x=>x.textContent===c); if(b) b.click();});})()`);
+      await js(`(()=>{const v=document.getElementById('view'); const n=document.getElementById('f_name'); n.value='فاطمه احمدی'; n.dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('f_father').value='محمد'; const ay=document.getElementById('f_ay'); ay.value='34'; ay.dispatchEvent(new Event('input',{bubbles:true})); document.getElementById('f_phone').value='0799123456';
+        const ts=document.getElementById('tSearch'); ['401', String(Catalog.byCode.get('LFT').num_code), 'VITD', 'TSH', 'URINE'].forEach(c=>{ ts.value=c; ts.dispatchEvent(new Event('input',{bubbles:true})); ts.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); });})()`);
       await shot('page-reception');
+      const recType = await js(`document.getElementById('f_type').value + '|' + document.querySelectorAll('#selList .selRow').length`);
+      console.log((recType === 'female|5' ? 'PASS ' : 'FAIL ') + 'reception: category from name/age + tests by code → ' + recType); if (recType !== 'female|5') errors.push('CHECK reception');
       // save order and enter results
       await js(`[...document.querySelectorAll('[data-act=saveOnly]')][0].click()`); await wait(1500);
       await js(`document.querySelectorAll('.modalBack').forEach(m=>m.remove())`);
@@ -47,10 +51,19 @@ app.on('browser-window-created', (_e, win) => {
       await js(`(()=>{const set=(c,v)=>{const t=Catalog.byCode.get(c); const el=document.querySelector('[data-tid="'+t.id+'"]:not(button)'); if(el){el.value=v; el.dispatchEvent(new Event('input',{bubbles:true}));}};
         set('WBC','12.4'); set('RBC','4.2'); set('HGB','10.8'); set('HCT','33.5'); set('PLT','260'); set('NEUT%','72'); set('LYMPH%','20'); set('MONO%','5'); set('EOS%','2'); set('BASO%','1'); set('RDWCV','15.2'); set('MPV','9.1');
         set('TBIL','1.6'); set('DBIL','0.4'); set('ALT','68'); set('AST','45'); set('ALP','110'); set('GGT','30'); set('TP','7.1'); set('ALB','4.2'); set('VITD','14.2'); set('TSH','2.35');})()`);
+      // urine: star all, then enter a few results by option code
+      await js(`document.querySelector('[data-act=starAll]').click()`);
+      await js(`(()=>{const f=(c,v)=>{const t=Catalog.byCode.get(c); const el=document.querySelector('[data-tid="'+t.id+'"]:not(button)'); el.focus(); el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));};
+        f('UCOL','2'); f('UAPP','1'); f('UPH','6.0'); f('UPRO','3'); f('URBC','2'); f('UWBC','4'); f('UEPI','few'); f('UCRY','2'); f('USG','1.020');})()`);
+      await js(`(()=>{const t=Catalog.byCode.get('UCRY'); document.querySelector('[data-tid="'+t.id+'"]').focus();})()`); await wait(300);
       await shot('page-results-entry');
+      const optv = await js(`['UCOL','UPRO','UEPI','UBIL'].map(c=>document.querySelector('[data-tid="'+Catalog.byCode.get(c).id+'"]').value).join('|')`);
+      console.log((optv === 'Yellow|1+|Few|*' ? 'PASS ' : 'FAIL ') + 'option results by code / text, star → ' + optv); if (optv !== 'Yellow|1+|Few|*') errors.push('CHECK option codes');
       await js(`document.querySelector('[data-act=complete]').click()`); await wait(800);
       await js(`document.querySelector('.modalBack [data-ok]')?.click()`); await wait(1200);
       await js(`reportPreview(${oid})`); await shot('modal-report');
+      await js(`document.querySelector('.docPreview').scrollTop=9999; document.querySelector('.modalBody').scrollTop=9999`); await shot('modal-report-urine');
+      await check0('urine report: macro and micro side by side, starred hidden', `loadOrderFull(${oid}).then(d=>{const h=reportHTML(d); return h.includes('twoCol') && h.includes('Microscopic') && !h.includes('>Bilirubin<') && d.results.get(Catalog.byCode.get('UBIL').id)?.value==='*' || h.slice(0,200); })`);
       await js(`document.querySelectorAll('.modalBack').forEach(m=>m.remove())`);
       await js(`testStats(Catalog.byCode.get('CBC').id)`); await shot('modal-teststats');
       await js(`document.querySelectorAll('.modalBack').forEach(m=>m.remove())`);
@@ -60,6 +73,16 @@ app.on('browser-window-created', (_e, win) => {
       await js(`document.querySelectorAll('.modalBack').forEach(m=>m.remove())`);
       const pid = await js(`lab.get("SELECT patient_id FROM orders WHERE id=${oid}").then(r=>r.patient_id)`);
       await js(`go('patients',{id:${pid}})`); await shot('page-patient-profile');
+      await js(`go('reception')`); await wait(400);
+      await js(`(()=>{const n=document.getElementById('f_name'); n.value='فاطمه احمدی'; n.dispatchEvent(new Event('input',{bubbles:true}));})()`); await wait(900);
+      await js(`document.querySelector('[data-act=pickPt]')?.click()`); await wait(700);
+      await shot('page-reception-history');
+      await check0('patient history shown for returning patient', `Promise.resolve(!document.getElementById('ptHistory').classList.contains('hidden') && document.querySelectorAll('#ptHistory tbody tr').length>=1)`);
+      await js(`go('inventory',{tab:'monthly'})`); await shot('page-inventory-monthly');
+      await js(`go('settings',{tab:'print'})`); await shot('page-settings-print');
+      await js(`go('settings',{tab:'share'})`); await shot('page-settings-share');
+      await js(`App.settings.print_page='A5'; App.settings.print_font_size='10'; reportPreview(${oid})`); await shot('modal-report-a5');
+      await js(`document.querySelectorAll('.modalBack').forEach(m=>m.remove()); App.settings.print_page='A4'; App.settings.print_font_size='11.5'`);
       // print to PDF of the report to verify print CSS
       await js(`loadOrderFull(${oid}).then(d=>{document.getElementById('printArea').innerHTML=reportHTML(d);})`); await wait(500);
       const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { marginType: 'none' } });
@@ -97,6 +120,13 @@ app.on('browser-window-created', (_e, win) => {
       await check('order edit tests + payment', `(async()=>{ const r=await lab.createOrder({patient:{full_name:'Edit Test',sex:'M',birth_date:'1980-01-01'},age_days:16000,test_ids:[Catalog.byCode.get('CBC').id],discount:0,payment:{amount:0}}); await lab.updateOrderTests(r.id,[Catalog.byCode.get('CBC').id,Catalog.byCode.get('ZZTEST').id],50); const o=await lab.get('SELECT * FROM orders WHERE id=?',[r.id]); await lab.addPayment(r.id,o.net,'cash',''); const o2=await lab.get('SELECT * FROM orders WHERE id=?',[r.id]); return o.gross===Catalog.byCode.get('CBC').price+555 && o2.paid===o2.net || [o,o2]; })()`);
       await check('guard blocks users table writes', `lab.run("UPDATE users SET role='admin'").then(()=>'allowed').catch(()=>true)`);
       await check('guard blocks password hash reads', `lab.all("SELECT pass_hash FROM users").then(()=>'allowed').catch(()=>true)`);
+      await check('delete order returns reagents', `(async()=>{ const q0=(await lab.get('SELECT qty FROM inventory_items WHERE id=1')).qty; const r=await lab.createOrder({patient:{full_name:'Del Test',sex:'M',birth_date:'1990-01-01'},age_days:13000,test_ids:[Catalog.byCode.get('CBC').id],discount:0,payment:{amount:100}}); await lab.saveResults(r.id,[{test_id:Catalog.byCode.get('WBC').id,value:'7'}],'completed'); const q1=(await lab.get('SELECT qty FROM inventory_items WHERE id=1')).qty; await lab.deleteOrder(r.id,'test'); const q2=(await lab.get('SELECT qty FROM inventory_items WHERE id=1')).qty; const left=(await lab.get('SELECT COUNT(*) c FROM payments WHERE order_id=?',[r.id])).c + (await lab.get('SELECT COUNT(*) c FROM orders WHERE id=?',[r.id])).c; return q1===q0-1 && q2===q0 && left===0 || [q0,q1,q2,left]; })()`);
+      await check('range grid (newborn/child/male/female) saves 4 ranges', `(async()=>{ const id=Catalog.byCode.get('GLUF').id; testEditor(id); await new Promise(r=>setTimeout(r,500)); const g=(c,k,v)=>{const el=document.querySelector('.rangeGrid tr[data-cat="'+c+'"] [data-gk="'+k+'"]'); el.value=v; el.dispatchEvent(new Event('input',{bubbles:true}));}; g('newborn','low',40); g('newborn','high',90); g('child','low',60); g('child','high',100); g('male','low',70); g('male','high',105); g('female','low',70); g('female','high',100); document.querySelector('.modalBack [data-x=save]').click(); await new Promise(r=>setTimeout(r,900)); const t=Catalog.byCode.get('GLUF'); const a=resolveRange(t,'M',10), b=resolveRange(t,'F',3000), c=resolveRange(t,'M',12000), d=resolveRange(t,'F',12000); return (Catalog.ranges.get(t.id)||[]).length===4 && a.low===40 && b.low===60 && c.high===105 && d.high===100 || [a,b,c,d]; })()`);
+      await check('sales profit per test', `(async()=>{ await lab.run("UPDATE tests SET cost=100 WHERE code='CBC'"); await lab.run("UPDATE order_items SET cost=100 WHERE test_id=(SELECT id FROM tests WHERE code='CBC')"); go('sales'); await new Promise(r=>setTimeout(r,1200)); return document.body.innerText.includes('فروش و مفاد هر آزمایش'); })()`);
+      await shot('page-sales-profit');
+      await check('category from age (newborn ≤31d, child ≤14y)', `ptTypeFromAge(31,'M')==='newborn' && ptTypeFromAge(32,'F')==='child' && ptTypeFromAge(14*365+200,'F')==='child' && ptTypeFromAge(15*365+10,'F')==='female' && ptTypeFromAge(null,'M')==='male'`);
+      await check('low stock alert under 3', `(async()=>{ await lab.run("INSERT INTO inventory_items(name,unit,qty,reorder_level) VALUES('TSH Kit','test',2,0)"); go('dashboard'); await new Promise(r=>setTimeout(r,1200)); return document.body.innerText.includes('TSH Kit') && document.body.innerText.includes('رو به اتمام'); })()`);
+      await shot('page-dashboard-lowstock');
       for (const p of ['tests', 'sales', 'finance']) { await js(`go('${p}')`); await wait(700); }
       await shot('page-tests-after');
       await js(`go('patients',{id:${pid}})`); await shot('page-patient-profile-after');

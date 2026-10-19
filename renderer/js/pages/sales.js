@@ -8,7 +8,7 @@ Pages.sales = {
     const from = monthRange(months[0].key)[0];
     const [orders, items, pays, exps] = await Promise.all([
       lab.all(`SELECT o.id, o.created_at, o.gross, o.discount, o.net, o.doctor_id, d.name doctor, d.commission_pct FROM orders o LEFT JOIN doctors d ON d.id=o.doctor_id WHERE o.status<>'cancelled' AND date(o.created_at)>=?`, [from]),
-      lab.all(`SELECT oi.test_id, oi.price, o.created_at, o.gross, o.net FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status<>'cancelled' AND date(o.created_at)>=?`, [from]),
+      lab.all(`SELECT oi.test_id, oi.price, oi.cost, o.created_at, o.gross, o.net FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.status<>'cancelled' AND date(o.created_at)>=?`, [from]),
       lab.all(`SELECT amount, paid_at FROM payments WHERE date(paid_at)>=?`, [from]),
       lab.all(`SELECT amount, expense_date FROM expenses WHERE expense_date>=?`, [from])
     ]);
@@ -23,16 +23,17 @@ Pages.sales = {
     const T = new Map();
     items.forEach(i => {
       const k = mk(i.created_at); if (!M.has(k)) return;
-      if (!T.has(i.test_id)) T.set(i.test_id, { qty: new Map(), rev: new Map(), tq: 0, tr: 0 });
+      if (!T.has(i.test_id)) T.set(i.test_id, { qty: new Map(), rev: new Map(), cost: new Map(), tq: 0, tr: 0 });
       const r = T.get(i.test_id); const v = i.gross > 0 ? i.price * i.net / i.gross : 0;
-      r.qty.set(k, (r.qty.get(k) || 0) + 1); r.rev.set(k, (r.rev.get(k) || 0) + v); r.tq++; r.tr += v;
+      r.qty.set(k, (r.qty.get(k) || 0) + 1); r.rev.set(k, (r.rev.get(k) || 0) + v); r.cost.set(k, (r.cost.get(k) || 0) + (i.cost || 0)); r.tq++; r.tr += v;
     });
     const totalSales = ms.reduce((a, x) => a + x.sales, 0), totalOrders = ms.reduce((a, x) => a + x.orders, 0);
     const best = ms.reduce((a, x) => x.sales > a.sales ? x : a, ms[0]);
     const cur = M.get(sel);
     const prevIdx = months.findIndex(m => m.key === sel) - 1; const prev = prevIdx >= 0 ? ms[prevIdx] : null;
     const delta = prev && prev.sales ? Math.round((cur.sales - prev.sales) * 100 / prev.sales) : null;
-    const selTests = [...T.entries()].map(([id, r]) => ({ t: Catalog.byId.get(id), q: r.qty.get(sel) || 0, v: r.rev.get(sel) || 0 })).filter(x => x.t && x.q).sort((a, b) => b.v - a.v);
+    const selTests = [...T.entries()].map(([id, r]) => ({ t: Catalog.byId.get(id), q: r.qty.get(sel) || 0, v: r.rev.get(sel) || 0, c: r.cost.get(sel) || 0 })).filter(x => x.t && x.q).sort((a, b) => b.v - a.v);
+    const selRev = selTests.reduce((a, x) => a + x.v, 0), selCost = selTests.reduce((a, x) => a + x.c, 0);
     const dept = new Map(); selTests.forEach(x => { const d = Catalog.dept(x.t); const k = d ? d.name : 'Other'; dept.set(k, (dept.get(k) || 0) + x.v); });
     const deptArr = [...dept.entries()].sort((a, b) => b[1] - a[1]);
     const docs = new Map(); orders.filter(o => mk(o.created_at) === sel && o.doctor_id).forEach(o => { if (!docs.has(o.doctor_id)) docs.set(o.doctor_id, { name: o.doctor, pct: o.commission_pct || 0, n: 0, s: 0 }); const d = docs.get(o.doctor_id); d.n++; d.s += o.net; });
@@ -53,6 +54,11 @@ Pages.sales = {
       <div class="grid g2">
         <div class="card"><div class="cardHead"><h2>پرفروش‌ترین آزمایش‌ها — ${esc(cur.label)}</h2><span class="small muted">بر اساس درآمد</span></div>${selTests.length ? '<div class="chartBox tall"><canvas id="s_top"></canvas></div>' : '<div class="empty">فروشی در این ماه ثبت نشده</div>'}</div>
         <div class="card"><div class="cardHead"><h2>درآمد بخش‌ها — ${esc(cur.label)}</h2></div>${deptArr.length ? '<div class="chartBox tall"><canvas id="s_dept"></canvas></div>' : '<div class="empty">—</div>'}</div></div>
+      <div class="card"><div class="cardHead"><h2>فروش و مفاد هر آزمایش — ${esc(cur.label)}</h2><div class="row"><span class="pill good">درآمد ${money(Math.round(selRev))}</span><span class="pill">هزینه ${money(Math.round(selCost))}</span><span class="pill ${selRev - selCost >= 0 ? 'good' : 'bad'}">مفاد ${money(Math.round(selRev - selCost))}</span><button class="btn sm" data-act="csvProfit">${icon('download', 14)} CSV</button></div></div>
+        ${selTests.length && !selCost ? '<div class="infoBox small">برای محاسبه دقیق مفاد، «هزینه تمام‌شده» هر آزمایش را در صفحه «آزمایش‌ها و قیمت‌ها» وارد کنید (یا با دکمه «از مواد» از روی کیت‌ها محاسبه کنید).</div>' : ''}
+        <div class="tableWrap" style="max-height:420px"><table class="t"><thead><tr><th>کد</th><th>آزمایش</th><th class="c">تعداد فروش</th><th>درآمد</th><th>هزینه</th><th>مفاد</th><th class="c">٪ مفاد</th><th></th></tr></thead><tbody>
+        ${selTests.map(x => { const pr = x.v - x.c; return `<tr><td><span class="codeTag">${esc(x.t.num_code ?? x.t.code)}</span></td><td class="en small">${esc(x.t.name)}</td><td class="c num"><b>${x.q}</b></td><td class="num">${money(Math.round(x.v))}</td><td class="num">${money(Math.round(x.c))}</td><td class="num" style="color:${pr >= 0 ? 'var(--good)' : 'var(--bad)'}"><b>${money(Math.round(pr))}</b></td><td class="c num">${x.v ? Math.round(pr * 100 / x.v) + '٪' : '—'}</td><td><button class="btn ghost icon" data-act="tstat" data-id="${x.t.id}">${icon('chart', 14)}</button></td></tr>`; }).join('') || '<tr><td colspan="8" class="empty">فروشی در این ماه ثبت نشده</td></tr>'}
+        </tbody>${selTests.length ? `<tfoot><tr><td colspan="2"><b>مجموع</b></td><td class="c num"><b>${selTests.reduce((a, x) => a + x.q, 0)}</b></td><td class="num"><b>${money(Math.round(selRev))}</b></td><td class="num"><b>${money(Math.round(selCost))}</b></td><td class="num"><b>${money(Math.round(selRev - selCost))}</b></td><td class="c num">${selRev ? Math.round((selRev - selCost) * 100 / selRev) + '٪' : ''}</td><td></td></tr></tfoot>` : ''}</table></div></div>
       <div class="card"><div class="cardHead"><h2>فروش هر آزمایش به تفکیک ماه</h2><div class="row"><div class="chips"><button class="chip ${mode === 'qty' ? 'on' : ''}" data-act="mode" data-m="qty">تعداد</button><button class="chip ${mode === 'rev' ? 'on' : ''}" data-act="mode" data-m="rev">درآمد</button></div>
         <input id="s_q" placeholder="فیلتر آزمایش…" style="width:200px"><button class="btn sm" data-act="csvTests">${icon('download', 14)} CSV</button></div></div>
         <div class="tableWrap" style="max-height:480px"><table class="t" id="s_matrix"><thead><tr><th>کد</th><th>آزمایش</th>${months.map(m => `<th class="c">${esc(m.short)}<div class="small muted" style="font-weight:400">${esc(m.key.slice(0, 4))}</div></th>`).join('')}<th class="c">مجموع</th><th></th></tr></thead><tbody></tbody></table></div></div>
@@ -84,6 +90,7 @@ Pages.sales = {
     actions(view, {
       span: (el) => go('sales', { span: Number(el.dataset.n) }), month: (el) => go('sales', { month: el.dataset.k, span }),
       mode: (el) => { App.salesMatrix = el.dataset.m; go('sales', { month: sel, span }); }, tstat: (el) => testStats(Number(el.dataset.id)),
+      csvProfit: () => exportCSV('test-profit-' + sel, selTests, [[x => x.t.num_code, 'No'], [x => x.t.code, 'Code'], [x => x.t.name, 'Test'], [x => x.q, 'Qty'], [x => Math.round(x.v), 'Revenue'], [x => Math.round(x.c), 'Cost'], [x => Math.round(x.v - x.c), 'Profit']]),
       csvMonths: () => exportCSV('monthly-sales', ms, [['label', 'Month'], ['orders', 'Orders'], [r => Math.round(r.gross), 'Gross'], ['disc', 'Discount'], [r => Math.round(r.sales), 'Net sales'], ['collected', 'Collected'], ['expenses', 'Expenses'], [r => r.collected - r.expenses, 'Cash profit']]),
       csvTests: () => { const rows = matrixRows(); exportCSV('test-sales-by-month', rows, [[x => x.t.code, 'Code'], [x => x.t.name, 'Test'], ...months.map(m => [x => mode === 'qty' ? (x.r.qty.get(m.key) || 0) : Math.round(x.r.rev.get(m.key) || 0), m.label]), [x => mode === 'qty' ? x.r.tq : Math.round(x.r.tr), 'Total']]); }
     });

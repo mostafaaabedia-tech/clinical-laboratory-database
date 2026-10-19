@@ -20,6 +20,7 @@ Pages.dashboard = {
                WHERE o.status<>'cancelled' AND date(o.created_at)>=? GROUP BY t.id ORDER BY c DESC LIMIT 8`, [mStart]),
       lab.all(`SELECT * FROM v_order_summary ORDER BY id DESC LIMIT 8`)
     ]);
+    const lowStock = await lab.all('SELECT * FROM v_low_stock ORDER BY qty LIMIT 20');
     const todayPaid = (await lab.get('SELECT IFNULL(SUM(amount),0) s FROM payments WHERE date(paid_at)=?', [today])).s;
     const delta = kPrev.s ? Math.round((kMonth.s - kPrev.s) * 100 / kPrev.s) : null;
     const alerts = await alertItems();
@@ -30,6 +31,7 @@ Pages.dashboard = {
       <div class="pageHead"><div><h1>${greet}، ${esc(App.user.full_name || App.user.username)}</h1><p>نمای کلی فعالیت امروز لابراتوار — ${esc(fmtDate(new Date()))}</p></div>
         <div class="toolbar">${canSee('reception') ? `<button class="btn primary" data-act="new">${icon('plus', 16)} پذیرش جدید</button>` : ''}
         ${canSee('results') ? `<button class="btn" data-act="work">${icon('results', 16)} صف کاری</button>` : ''}</div></div>
+      ${lowStock.length ? `<div class="warnBox lowBanner"><b>⚠ مواد رو به اتمام:</b>${lowStock.map(i => `<span class="pill ${i.qty < 3 ? 'bad' : 'warn'}" data-act="inv">${esc(i.name)} — ${fmtNum(i.qty)} ${esc(i.unit || '')} باقی‌مانده</span>`).join('')}</div>` : ''}
       <div class="grid g4" style="margin-bottom:16px">
         <div class="kpi"><div class="lbl">پذیرش‌های امروز</div><div class="val">${kToday.c}</div><div class="sub">فروش امروز: ${money(kToday.s)} · دریافت: ${money(todayPaid)}</div></div>
         <div class="kpi good"><div class="lbl">فروش ماه جاری (${esc(monthKey(new Date()).label)})</div><div class="val">${money(kMonth.s)}</div>
@@ -51,7 +53,7 @@ Pages.dashboard = {
       </div>`;
 
     actions(view, {
-      new: () => go('reception'), work: () => go('results'), all: () => go('orders'),
+      new: () => go('reception'), work: () => go('results'), all: () => go('orders'), inv: () => go('inventory'),
       open: (el) => openOrder(Number(el.dataset.id)), alert: (el) => alerts[Number(el.dataset.i)].go()
     });
 

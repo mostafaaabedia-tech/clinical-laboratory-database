@@ -101,7 +101,7 @@ async function alertItems() {
   crit.forEach(c => out.push({ cls: 'bad', ic: '!!', title: `نتیجه بحرانی: ${c.name} = ${c.value}`, text: `${c.full_name} · ${c.order_no}`, go: () => openOrder(c.order_id) }));
   if (pendingApprove.c) out.push({ cls: 'info', ic: '✓', title: `${pendingApprove.c} راپور منتظر تأیید`, text: 'نتایج تکمیل شده و آماده تأیید نهایی', go: () => go('results', { status: 'completed' }) });
   if (debt.c) out.push({ cls: 'warn', ic: '؋', title: `${debt.c} پذیرش بدهکار`, text: `مجموع باقی‌مانده: ${money(debt.s)} ${currency()}`, go: () => go('finance', { tab: 'debts' }) });
-  low.forEach(i => out.push({ cls: 'warn', ic: '▣', title: `موجودی کم: ${i.name}`, text: `باقی‌مانده ${i.qty} ${i.unit || ''} (حد سفارش ${i.reorder_level})`, go: () => go('inventory') }));
+  low.forEach(i => out.push({ cls: i.qty < 3 ? 'bad' : 'warn', ic: '▣', title: `${i.name} رو به اتمام است`, text: `فقط ${fmtNum(i.qty)} ${i.unit || ''} باقی مانده (حد هشدار ${fmtNum(i.reorder_level)})`, go: () => go('inventory') }));
   expiring.forEach(i => out.push({ cls: 'bad', ic: '⌛', title: `تاریخ انقضا نزدیک: ${i.name}`, text: fmtDate(i.expiry_date), go: () => go('inventory') }));
   return out;
 }

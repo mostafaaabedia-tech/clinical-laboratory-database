@@ -28,7 +28,7 @@ Pages.tests = {
           <div class="card row" style="padding:10px 12px"><input id="tl_q" class="grow" placeholder="جستجو بر اساس کد یا نام…" value="${esc(st.q)}" style="max-width:420px">
             <span class="grow"></span><span class="small muted" id="tl_info"></span>
             ${canEdit ? `<button class="btn success hidden" data-act="savePrices" id="tl_save">${icon('check', 16)} ذخیره تغییرات قیمت (<span id="tl_pc">0</span>)</button>` : ''}</div>
-          <div class="card" style="padding:0"><div class="tableWrap" style="border:0;max-height:calc(100vh - 250px)"><table class="t"><thead><tr><th>کد</th><th>نام آزمایش</th><th>قیمت (${esc(currency())})</th><th class="c">فروش ماه</th><th></th><th>بخش</th><th>واحد</th><th>محدوده مرجع</th></tr></thead><tbody id="tl_body"></tbody></table></div></div>
+          <div class="card" style="padding:0"><div class="tableWrap" style="border:0;max-height:calc(100vh - 250px)"><table class="t"><thead><tr><th>کد</th><th>نام آزمایش</th><th>قیمت (${esc(currency())})</th><th>هزینه</th><th class="c">فروش ماه</th><th></th><th>بخش</th><th>واحد</th><th>محدوده مرجع</th></tr></thead><tbody id="tl_body"></tbody></table></div></div>
         </div>
       </div>`;
     const list = () => {
@@ -46,11 +46,12 @@ Pages.tests = {
       const rows = list();
       $('#tl_info', view).textContent = `${rows.length} مورد`;
       $('#tl_body', view).innerHTML = rows.slice(0, 600).map(t => {
-        const rg = resolveRange(t, 'M', 30 * 365);
-        const ref = t.is_panel ? `${Catalog.leaves(t.id).length} پارامتر` : refDisplay(t, rg);
+        const rM = refDisplay(t, resolveRange(t, 'M', 30 * 365)), rF = refDisplay(t, resolveRange(t, 'F', 30 * 365)), rC = refDisplay(t, resolveRange(t, 'M', 5 * 365));
+        const ref = t.is_panel ? `${Catalog.leaves(t.id).length} پارامتر` : rM === rF && rM === rC ? rM : `M: ${rM} | F: ${rF}${rC !== rM ? ' | Child: ' + rC : ''}`;
         return `<tr><td><span class="codeTag">${esc(t.num_code ?? '')}</span><div class="small en muted">${esc(t.code)}</div></td>
           <td class="en tName"><b title="${esc(t.name)}">${esc(t.name)}</b><div class="small">${t.is_panel ? '<span class="pill info">Panel</span> ' : ''}${t.formula ? '<span class="pill violet" title="' + esc(t.formula) + '">calc</span> ' : ''}${!t.orderable ? '<span class="pill" title="فقط داخل پنل">component</span> ' : ''}${t.name_fa ? `<span class="muted">${esc(t.name_fa)}</span>` : ''}</div></td>
           <td>${canEdit ? `<input class="priceInput ${pending.has(t.id) ? 'changed' : ''}" type="number" min="0" data-price="${t.id}" value="${pending.has(t.id) ? pending.get(t.id) : t.price}">` : `<span class="num">${money(t.price)}</span>`}</td>
+          <td>${canEdit ? `<input class="priceInput" style="width:80px" type="number" min="0" step="any" data-cost="${t.id}" value="${t.cost || 0}" title="هزینه تمام‌شده (برای مفاد)">` : `<span class="num">${money(t.cost)}</span>`}</td>
           <td class="c">${sold.get(t.id) || ''}</td>
           <td class="nowrap"><button class="btn ghost icon" data-act="stats" data-id="${t.id}" title="نمودار فروش">${icon('chart', 16)}</button>
             ${canEdit ? `<button class="btn ghost icon" data-act="edit" data-id="${t.id}" title="ویرایش">${icon('edit', 16)}</button><button class="btn ghost icon" data-act="dup" data-id="${t.id}" title="کپی">${icon('copy', 16)}</button>` : ''}</td>
@@ -66,6 +67,11 @@ Pages.tests = {
       if (v === Number(t.price) || el.value === '') pending.delete(id); else pending.set(id, v);
       el.classList.toggle('changed', pending.has(id));
       $('#tl_save', view)?.classList.toggle('hidden', !pending.size); if ($('#tl_pc', view)) $('#tl_pc', view).textContent = pending.size;
+    });
+    view.addEventListener('change', async (e) => {
+      const el = e.target.closest('[data-cost]'); if (!el) return;
+      const id = Number(el.dataset.cost), v = Math.max(0, Number(el.value) || 0);
+      try { await lab.run("UPDATE tests SET cost=?, updated_at=datetime('now','localtime') WHERE id=?", [v, id]); Catalog.byId.get(id).cost = v; toast('هزینه ذخیره شد', 'good'); } catch (err) { errToast(err); }
     });
     view.addEventListener('keydown', (e) => { if (e.target.matches('[data-price]') && e.key === 'Enter') { e.preventDefault(); const all = $$('[data-price]', view); const i = all.indexOf(e.target); all[i + 1]?.focus(); all[i + 1]?.select(); } });
     actions(view, {
@@ -92,7 +98,7 @@ async function testEditor(id, isPanelNew, duplicate = false) {
   if (duplicate) { t.code = t.code + '-2'; t.name = t.name + ' (copy)'; }
   let ranges = id ? (Catalog.ranges.get(id) || []).map(r => ({ ...r })) : [];
   let comps = id ? [...(Catalog.children.get(id) || [])] : [];
-  const items = await lab.all('SELECT id, name, unit FROM inventory_items WHERE active=1 ORDER BY name');
+  const items = await lab.all('SELECT id, name, unit, unit_cost FROM inventory_items WHERE active=1 ORDER BY name');
   let cons = id ? await lab.all('SELECT item_id, qty_per_test FROM test_consumables WHERE test_id=?', [id]) : [];
   const editing = id && !duplicate;
   const opt = (v, sel) => `<option value="${v}" ${String(v) === String(sel) ? 'selected' : ''}>`;
@@ -106,18 +112,23 @@ async function testEditor(id, isPanelNew, duplicate = false) {
       <label class="field"><span>بخش</span><select name="department_id">${Catalog.depts.map(d => opt(d.id, t.department_id) + esc(d.name_fa || d.name) + '</option>').join('')}</select></label>
       <label class="field"><span>نوع نمونه</span><select name="sample_type_id">${Catalog.samples.map(s => opt(s.id, t.sample_type_id) + esc(s.name) + '</option>').join('')}</select></label>
       <label class="field"><span>قیمت (${esc(currency())})</span><input type="number" min="0" name="price" value="${t.price}"></label>
-      <label class="field"><span>هزینه تمام‌شده</span><input type="number" min="0" name="cost" value="${t.cost || 0}"></label>
+      <div class="field"><span>هزینه تمام‌شده (برای محاسبه مفاد)</span><div class="inputGroup"><input type="number" min="0" step="any" name="cost" value="${t.cost || 0}"><button class="btn" type="button" data-x="calcCost" title="جمع قیمت مواد مصرفی این آزمایش">از مواد</button></div></div>
       <label class="field"><span>زمان جوابدهی (ساعت)</span><input type="number" min="0" name="tat_hours" value="${t.tat_hours}"></label>
       ${isPanel ? '' : `
       <label class="field"><span>نوع نتیجه</span><select name="result_type">${[['numeric', 'عددی'], ['option', 'گزینه‌ای (Positive/Negative…)'], ['text', 'متن کوتاه'], ['memo', 'متن بلند (کشت، پاتولوژی)']].map(([k, v]) => opt(k, t.result_type) + v + '</option>').join('')}</select></label>
       <label class="field"><span>واحد</span><input name="unit" value="${esc(t.unit || '')}" class="ltr"></label>
       <label class="field"><span>اعشار</span><input type="number" min="0" max="4" name="decimals" value="${t.decimals ?? ''}"></label>
-      <label class="field"><span>حد پایین (Low)</span><input type="number" step="any" name="ref_low" value="${t.ref_low ?? ''}"></label>
-      <label class="field"><span>حد بالا (High)</span><input type="number" step="any" name="ref_high" value="${t.ref_high ?? ''}"></label>
+      <label class="field"><span>حد پایین عمومی (Low)</span><input type="number" step="any" name="ref_low" value="${t.ref_low ?? ''}"></label>
+      <label class="field"><span>حد بالا عمومی (High)</span><input type="number" step="any" name="ref_high" value="${t.ref_high ?? ''}"></label>
       <label class="field"><span>بحرانی پایین</span><input type="number" step="any" name="critical_low" value="${t.critical_low ?? ''}"></label>
       <label class="field"><span>بحرانی بالا</span><input type="number" step="any" name="critical_high" value="${t.critical_high ?? ''}"></label>
       <label class="field span2"><span>متن محدوده / مقدار طبیعی (برای گزینه‌ای)</span><input name="ref_text" value="${esc(t.ref_text || '')}" class="ltr" style="text-align:left"></label>
-      <label class="field full"><span>گزینه‌ها (هر خط یک گزینه — اولی معمولاً طبیعی)</span><textarea name="options" class="ltr" style="text-align:left" rows="3">${esc((t.optionList || []).join('\n'))}</textarea></label>
+      <div class="field full"><span>نارمل رنج بر اساس سن و جنس</span>
+        <table class="t rangeGrid"><thead><tr><th style="width:170px"></th><th>حد پایین</th><th>حد بالا</th><th>متن چاپی (اختیاری)</th></tr></thead><tbody>
+        ${[['newborn', 'نوزاد <small class="muted">(تا ۳۱ روز)</small>'], ['child', 'خورد سال <small class="muted">(تا ۱۴ سال)</small>'], ['male', 'آقا'], ['female', 'خانم']].map(([k, lbl]) => `<tr data-cat="${k}"><td>${lbl}</td><td><input data-gk="low" type="number" step="any"></td><td><input data-gk="high" type="number" step="any"></td><td><input data-gk="text" class="ltr"></td></tr>`).join('')}
+        </tbody></table><small class="muted" id="te_gridNote">برای رنج‌های دقیق‌تر (چند گروه سنی) از زبانه «محدوده‌های مرجع» استفاده کنید.</small></div>
+      <label class="field full"><span>گزینه‌ها — هر خط یک گزینه، اولی معمولاً طبیعی. کد دلخواه: <span class="kbd">32=Yellow</span> (بدون کد، شماره خط کد است)</span><textarea name="options" class="ltr" style="text-align:left" rows="4">${esc((t.optionsRaw || []).join('\n'))}</textarea></label>
+      <label class="field"><span>جای چاپ در راپور</span><select name="section"><option value="">عادی</option><option value="micro" ${t.section === 'micro' ? 'selected' : ''}>میکروسکوپی (ستون جدا — مثل ادرار)</option></select></label>
       <label class="field full"><span>فرمول محاسبه (اختیاری) — مثال: <span class="kbd">{HCT}*10/{RBC}</span> · متغیرها: AGE, FEMALE, ISI, PTC · توابع: pow, min, max, egfr</span><input name="formula" value="${esc(t.formula || '')}" class="ltr" style="text-align:left"></label>
       <label class="field"><span>روش (Method)</span><input name="method" value="${esc(t.method || '')}" class="ltr"></label>`}
       <label class="field span2"><span>یادداشت</span><input name="notes" value="${esc(t.notes || '')}"></label>
@@ -165,7 +176,46 @@ async function testEditor(id, isPanelNew, duplicate = false) {
   const readCons = () => $$('#te_cons tr[data-i]', m.el).forEach(tr => { const c = cons[Number(tr.dataset.i)]; c.item_id = Number($('[data-k=item]', tr).value); c.qty_per_test = Number($('[data-k=qty]', tr).value) || 0; });
   drawRanges(); drawComps(); drawCons();
 
-  $$('.tabs button', m.el).forEach(b => b.onclick = () => { $$('.tabs button', m.el).forEach(x => x.classList.toggle('on', x === b)); $$('[data-pane]', m.el).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab)); });
+  // ---- simple range grid: newborn / child / male / female ----
+  const CAT_DEF = { newborn: ['A', 0, NEWBORN_MAX_DAYS + 1], child: ['A', NEWBORN_MAX_DAYS + 1, CHILD_MAX_DAYS + 1], male: ['M', CHILD_MAX_DAYS + 1, null], female: ['F', CHILD_MAX_DAYS + 1, null] };
+  const CAT_AGE = { newborn: ['M', 10], child: ['M', 5 * 365], male: ['M', 30 * 365], female: ['F', 30 * 365] };
+  let gridDirty = false;
+  const localRange = (sex, age) => {
+    const rs = ranges.filter(r => (r.sex === 'A' || r.sex === sex) && (r.age_min_days === null || age >= r.age_min_days) && (r.age_max_days === null || age < r.age_max_days));
+    rs.sort((a, b) => (b.sex !== 'A') - (a.sex !== 'A') || ((a.age_max_days ?? 1e7) - (a.age_min_days ?? 0)) - ((b.age_max_days ?? 1e7) - (b.age_min_days ?? 0)));
+    if (rs[0]) return rs[0];
+    const g = (n) => $(`[name="${n}"]`, m.el)?.value;
+    return { low: num(g('ref_low')), high: num(g('ref_high')), text: null };
+  };
+  const fillGrid = () => {
+    $$('.rangeGrid tr[data-cat]', m.el).forEach(tr => {
+      const [sx, age] = CAT_AGE[tr.dataset.cat]; const r = localRange(sx, age);
+      $('[data-gk="low"]', tr).value = r.low ?? ''; $('[data-gk="high"]', tr).value = r.high ?? ''; $('[data-gk="text"]', tr).value = r.text || '';
+    });
+    gridDirty = false;
+  };
+  const rangesFromGrid = () => {
+    const out = [];
+    $$('.rangeGrid tr[data-cat]', m.el).forEach(tr => {
+      const low = num($('[data-gk="low"]', tr).value), high = num($('[data-gk="high"]', tr).value), text = $('[data-gk="text"]', tr).value.trim() || null;
+      if (low === null && high === null && !text) return;
+      const [sex, a1, a2] = CAT_DEF[tr.dataset.cat];
+      out.push({ sex, age_min_days: a1, age_max_days: a2, low, high, text });
+    });
+    return out;
+  };
+  if ($('.rangeGrid', m.el)) {
+    fillGrid();
+    const rt = $('[name="result_type"]', m.el);
+    const tg = () => $('.rangeGrid', m.el).closest('.field').classList.toggle('hidden', rt.value !== 'numeric');
+    rt.addEventListener('change', tg); tg();
+    $('.rangeGrid', m.el).addEventListener('input', () => { gridDirty = true; $('#te_gridNote', m.el).textContent = 'با ذخیره، این ۴ گروه جایگزین محدوده‌های قبلی می‌شوند.'; });
+  }
+
+  $$('.tabs button', m.el).forEach(b => b.onclick = () => {
+    if (b.dataset.tab === 'r' && gridDirty) { ranges = rangesFromGrid(); drawRanges(); gridDirty = false; }
+    if (b.dataset.tab === 'g' && $('.rangeGrid', m.el)) { readRanges(); fillGrid(); }
+    $$('.tabs button', m.el).forEach(x => x.classList.toggle('on', x === b)); $$('[data-pane]', m.el).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab)); });
   const cq = $('#te_cq', m.el);
   if (cq) cq.addEventListener('input', () => {
     const q = cq.value.trim().toLowerCase(); const dd = $('#te_cdd', m.el);
@@ -186,6 +236,12 @@ async function testEditor(id, isPanelNew, duplicate = false) {
       if (x === 'addCons') { readCons(); cons.push({ item_id: items[0].id, qty_per_test: 1 }); drawCons(); }
       if (x === 'rmCons') { readCons(); cons.splice(i, 1); drawCons(); }
       if (x === 'stats') { m.close(); testStats(id); }
+      if (x === 'calcCost') {
+        readCons();
+        const c = cons.reduce((a, c) => a + (items.find(it => it.id === c.item_id)?.unit_cost || 0) * c.qty_per_test, 0);
+        if (!cons.length) return toast('ابتدا در زبانه «مواد مصرفی» مواد این آزمایش را اضافه کنید', 'bad');
+        $('[name="cost"]', m.el).value = Math.round(c * 100) / 100; toast('هزینه از روی مواد مصرفی محاسبه شد');
+      }
       if (x === 'del') {
         const used = await lab.get('SELECT COUNT(*) c FROM order_items WHERE test_id=?', [id]);
         const usedR = await lab.get('SELECT COUNT(*) c FROM results WHERE test_id=?', [id]);
@@ -203,6 +259,7 @@ async function testEditor(id, isPanelNew, duplicate = false) {
 
   async function save() {
     readRanges(); readCons();
+    if (gridDirty) ranges = rangesFromGrid();
     const v = formValues($('[data-pane="g"]', m.el));
     v.code = v.code.trim(); v.name = v.name.trim();
     if (!v.code || !v.name) return toast('کد و نام الزامی است', 'bad');
@@ -214,7 +271,7 @@ async function testEditor(id, isPanelNew, duplicate = false) {
     if (nc !== null) { const d2 = Catalog.tests.find(x => x.num_code === nc); if (d2 && d2.id !== (editing ? id : -1)) return toast(`کد عددی ${nc} برای «${d2.name}» استفاده شده است`, 'bad'); }
     const options = (v.options || '').split('\n').map(s => s.trim()).filter(Boolean);
     if (v.formula) { try { const vals = {}; (v.formula.match(/\{([^}]+)\}/g) || []).forEach(k => vals[k.slice(1, -1).toUpperCase()] = 1); evalFormula(v.formula, vals, { AGE: 30, FEMALE: 0, ISI: 1, PTC: 12 }); } catch (e) { return toast('فرمول نادرست است: ' + e.message, 'bad'); } }
-    const cols = { code: v.code, num_code: nc, name: v.name, name_fa: v.name_fa || null, department_id: Number(v.department_id) || null, sample_type_id: Number(v.sample_type_id) || null,
+    const cols = { code: v.code, num_code: nc, section: v.section || null, name: v.name, name_fa: v.name_fa || null, department_id: Number(v.department_id) || null, sample_type_id: Number(v.sample_type_id) || null,
       is_panel: isPanel ? 1 : 0, orderable: v.orderable, active: v.active, result_type: isPanel ? 'text' : v.result_type, options: options.length ? JSON.stringify(options) : null,
       unit: v.unit || null, decimals: num(v.decimals), ref_low: num(v.ref_low), ref_high: num(v.ref_high), ref_text: v.ref_text || null, critical_low: num(v.critical_low), critical_high: num(v.critical_high),
       formula: v.formula || null, method: v.method || null, cost: Number(v.cost) || 0, tat_hours: Number(v.tat_hours) || 24, notes: v.notes || null };

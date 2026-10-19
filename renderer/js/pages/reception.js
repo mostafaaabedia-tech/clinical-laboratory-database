@@ -1,37 +1,38 @@
 /* Reception: register patient + order tests + take payment */
 'use strict';
 
-const QUICK = ['CBC', 'ESR', 'URINE', 'STOOL', 'GLUF', 'GLUR', 'HBA1C', 'LFT', 'RFT', 'LIPID', 'TFT', 'VITD', 'VITB12', 'CRP', 'WIDAL', 'BRUC', 'VIRAL', 'BGRH', 'UPT', 'HPYAB', 'ELECP', 'FERR'];
-
 Pages.reception = {
   async render(view, params = {}) {
     const doctors = await lab.all('SELECT * FROM doctors WHERE active=1 ORDER BY name');
-    const st = { patientId: null, sel: [], doctors };
+    const st = { patientId: null, sel: [], doctors, doctorId: null, birth: null };
     view.innerHTML = `
-      <div class="pageHead"><div><h1>پذیرش مریض</h1><p>ثبت مریض، انتخاب آزمایش‌ها و دریافت پول — همه چیز در یک صفحه</p></div>
+      <div class="pageHead"><div><h1>پذیرش مریض</h1><p>ثبت مریض، انتخاب آزمایش‌ها و دریافت پول — با <span class="kbd">Enter</span> به خانه بعدی بروید</p></div>
         <div class="toolbar"><button class="btn" data-act="reset">${icon('plus', 16)} فرم جدید</button></div></div>
       <div class="recGrid">
+        <div>
         <div class="card">
           <div class="cardHead"><h2>مشخصات مریض</h2><span id="ptMode" class="pill info">مریض جدید</span></div>
           <div class="searchBox" style="margin-bottom:12px"><input id="ptSearch" placeholder="جستجوی مریض قبلی (نام، تلفن، شماره پرونده)…" autocomplete="off"><div class="dropdown hidden" id="ptResults"></div></div>
-          <div class="formGrid">
-            <label class="field span2"><span>نام و تخلص <em>*</em></span><input name="full_name" id="f_name" autocomplete="off"></label>
-            <label class="field"><span>نام پدر</span><input name="father_name" id="f_father"></label>
-            <label class="field"><span>جنسیت <em>*</em></span><select name="sex" id="f_sex"><option value="M">مرد</option><option value="F">زن</option></select></label>
-            <div class="field span2"><span>سن <em>*</em></span><div class="inputGroup"><input type="number" min="0" id="f_ay" placeholder="سال"><input type="number" min="0" max="11" id="f_am" placeholder="ماه"><input type="number" min="0" max="30" id="f_ad" placeholder="روز"></div></div>
-            <label class="field"><span>تاریخ تولد</span><input type="date" id="f_birth"></label>
-            <label class="field"><span>شماره تماس</span><input type="tel" id="f_phone" class="ltr"></label>
-            <label class="field span2"><span>آدرس</span><input id="f_addr"></label>
-            <label class="field"><span>پزشک معرف</span><select id="f_doc"><option value="">— خودمراجعه —</option>${doctors.map(d => `<option value="${d.id}">${esc(d.name)}${d.code ? ' (' + esc(d.code) + ')' : ''}</option>`).join('')}</select></label>
-            <label class="field"><span>اولویت</span><select id="f_pri"><option value="routine">عادی</option><option value="urgent">عاجل (Urgent)</option></select></label>
-            <label class="field full"><span>یادداشت</span><input id="f_notes" placeholder="مثلاً: ناشتا، مصرف دارو…"></label>
+          <div class="recForm" id="recForm">
+            <label class="field c3"><span>نام و تخلص <em>*</em></span><input id="f_name" autocomplete="off" data-nav></label>
+            <label class="field c3"><span>نام پدر</span><input id="f_father" autocomplete="off" data-nav></label>
+            <div class="field c3"><span>جنسیت <em>*</em></span><div class="inputGroup">
+              <select id="f_type" data-nav>${Object.entries(PT_TYPES).map(([k, v]) => `<option value="${k}" ${k === 'male' ? 'selected' : ''}>${v}</option>`).join('')}</select>
+              <select id="f_csex" class="hidden" title="جنس طفل"><option value="M">پسر</option><option value="F">دختر</option></select></div></div>
+            <div class="field c3"><span>سن <em>*</em></span><div class="inputGroup"><input type="number" min="0" id="f_ay" placeholder="سال" data-nav><input type="number" min="0" max="11" id="f_am" placeholder="ماه" data-nav><input type="number" min="0" max="31" id="f_ad" placeholder="روز" data-nav></div></div>
+            <label class="field c2"><span>شماره تماس</span><input type="tel" id="f_phone" class="ltr" data-nav></label>
+            <div class="field c3"><span>داکتر معرف (کد یا نام)</span><div class="searchBox"><input id="f_docq" placeholder="— خودمراجعه —" autocomplete="off" data-nav><div class="dropdown hidden" id="docResults"></div></div></div>
+            <label class="field c1"><span>اولویت</span><select id="f_pri" data-nav><option value="routine">عادی</option><option value="urgent">عاجل</option></select></label>
+            <label class="field c3"><span>آدرس</span><input id="f_addr" data-nav></label>
+            <label class="field c3"><span>یادداشت</span><input id="f_notes" placeholder="مثلاً: ناشتا، مصرف دارو…" data-nav></label>
           </div>
         </div>
+        <div class="card hidden" id="ptHistory"></div>
+        </div>
         <div class="card">
-          <div class="cardHead"><h2>آزمایش‌ها</h2><button class="btn sm" data-act="browse">${icon('orders', 14)} مرور فهرست کامل</button></div>
-          <div class="searchBox"><input id="tSearch" placeholder="کد آزمایش را بنویسید و Enter بزنید (مثلاً 401 = CBC) — یا نام آزمایش" autocomplete="off" class="ltr" style="text-align:left"><div class="dropdown hidden" id="tResults"></div></div>
-          <div class="quick">${QUICK.map(c => Catalog.byCode.get(c)).filter(Boolean).map(t => `<button class="chip" data-act="quick" data-id="${t.id}" title="${esc(t.name)}">${esc(t.code)}</button>`).join('')}</div>
-          <div class="selList" id="selList"></div>
+          <div class="cardHead"><h2>آزمایش‌ها</h2><button class="btn sm" data-act="browse">${icon('orders', 14)} فهرست کامل</button></div>
+          <div class="searchBox"><input id="tSearch" placeholder="کد یا نام آزمایش + Enter (مثلاً 401 یا CBC)" autocomplete="off" class="ltr" style="text-align:left"><div class="dropdown hidden" id="tResults"></div></div>
+          <div class="selList" id="selList" style="margin-top:10px"></div>
           <div class="totals">
             <div><span>مجموع</span><b class="num" id="tGross">0</b></div>
             <div><span>تخفیف</span><div class="row" style="gap:6px"><input type="number" min="0" id="fDisc" value="0" style="width:110px;text-align:center"><select id="fDiscType" style="width:80px"><option value="amt">مبلغ</option><option value="pct">٪</option></select></div></div>
@@ -39,11 +40,11 @@ Pages.reception = {
             <div><span>مبلغ قابل پرداخت</span><b class="num" id="tNet">0</b></div>
           </div>
           <div class="row" style="margin-top:14px;justify-content:flex-start">
-            <button class="btn success" data-act="save">${icon('check', 16)} ذخیره و چاپ رسید</button>
+            <button class="btn success" data-act="save" id="btnSave">${icon('check', 16)} ذخیره و چاپ رسید</button>
             <button class="btn primary" data-act="saveOnly">ذخیره</button>
             <button class="btn" data-act="saveLabels">${icon('barcode', 16)} ذخیره و چاپ لیبل</button>
           </div>
-          <p class="small muted" style="margin:10px 0 0">کلید میانبر: <span class="kbd">Ctrl+S</span> ذخیره · <span class="kbd">Enter</span> افزودن آزمایش اول نتیجه جستجو</p>
+          <p class="small muted" style="margin:10px 0 0"><span class="kbd">Enter</span> خانه بعدی / افزودن آزمایش · خانه آزمایش خالی + <span class="kbd">Enter</span> = رفتن به پرداخت · <span class="kbd">Ctrl+S</span> ذخیره</p>
         </div>
       </div>`;
 
@@ -70,51 +71,116 @@ Pages.reception = {
     const add = (id) => {
       const t = Catalog.byId.get(id); if (!t) return;
       if (st.sel.includes(id)) return toast('این آزمایش قبلاً اضافه شده است');
-      // warn if a component is already covered by a selected panel
       const covered = st.sel.some(s => Catalog.leaves(s).some(l => l.id === id));
       if (covered) toast(`${t.code} در یکی از پنل‌های انتخاب‌شده موجود است`, '');
       st.sel.push(id); renderSel();
     };
 
-    // patient search
+    // ---- category (نوزاد / خورد سال / آقا / خانم) & age ----
+    const ageDays = () => {
+      const y = $('#f_ay', view).value, m = $('#f_am', view).value, d = $('#f_ad', view).value;
+      if (y === '' && m === '' && d === '') return null;
+      return ageDaysFromBirth(birthFromAge(y, m, d));
+    };
+    const syncType = () => { const t = $('#f_type', view).value; $('#f_csex', view).classList.toggle('hidden', !(t === 'newborn' || t === 'child')); };
+    const sexOf = () => { const t = $('#f_type', view).value; return t === 'female' ? 'F' : t === 'male' ? 'M' : $('#f_csex', view).value; };
+    const setTypeFor = (days, sex) => { $('#f_type', view).value = ptTypeFromAge(days, sex); if (sex) $('#f_csex', view).value = sex; syncType(); };
+    const ageChanged = () => { const d = ageDays(); if (d !== null) setTypeFor(d, sexOf()); };
+    ['#f_ay', '#f_am', '#f_ad'].forEach(s => $(s, view).addEventListener('input', ageChanged));
+    $('#f_type', view).addEventListener('change', syncType);
+    $('#f_name', view).addEventListener('input', () => {
+      const s = guessSex($('#f_name', view).value); if (!s) return;
+      const t = $('#f_type', view).value;
+      if (t === 'newborn' || t === 'child') $('#f_csex', view).value = s; else $('#f_type', view).value = s === 'F' ? 'female' : 'male';
+    });
+    const setAgeFromBirth = (birth) => {
+      const days = ageDaysFromBirth(birth);
+      if (days === null) { ['#f_ay', '#f_am', '#f_ad'].forEach(s => $(s, view).value = ''); return null; }
+      const b = toDate(birth), n = new Date();
+      let y = n.getFullYear() - b.getFullYear(), m = n.getMonth() - b.getMonth(), d = n.getDate() - b.getDate();
+      if (d < 0) { m--; d += 30; } if (m < 0) { y--; m += 12; }
+      $('#f_ay', view).value = y || ''; $('#f_am', view).value = m || ''; $('#f_ad', view).value = d && y < 1 ? d : '';
+      return days;
+    };
+
+    // ---- doctor: search by code or name ----
+    let docHits = [], docActive = 0;
+    const docLabel = (d) => d ? `${d.name}${d.code ? ' (' + d.code + ')' : ''}` : '';
+    const pickDoctor = (d) => { st.doctorId = d ? d.id : null; $('#f_docq', view).value = docLabel(d); $('#docResults', view).classList.add('hidden'); docHits = []; };
+    const showDocs = () => {
+      const box = $('#docResults', view);
+      if (!docHits.length) { box.classList.add('hidden'); return; }
+      box.innerHTML = docHits.map((d, i) => `<div class="ddItem ${i === docActive ? 'active' : ''}" data-did="${d.id}"><span class="code">${esc(d.code || '')}</span><span style="flex:1">${esc(d.name)} <small class="muted">${esc(d.specialty || '')}</small></span></div>`).join('');
+      box.classList.remove('hidden');
+      $$('.ddItem', box).forEach(el => el.onmousedown = (e) => { e.preventDefault(); pickDoctor(st.doctors.find(d => d.id === Number(el.dataset.did))); });
+    };
+    const searchDocs = (q) => {
+      q = q.trim().toLowerCase(); if (!q) return [];
+      const sc = (d) => { const c = String(d.code || '').toLowerCase(), n = d.name.toLowerCase(); return c === q ? 0 : c.startsWith(q) ? 1 : n.startsWith(q) ? 2 : n.includes(q) ? 3 : c.includes(q) ? 4 : 99; };
+      return st.doctors.map(d => [sc(d), d]).filter(x => x[0] < 99).sort((a, b) => a[0] - b[0]).slice(0, 10).map(x => x[1]);
+    };
+    $('#f_docq', view).addEventListener('input', () => { st.doctorId = null; docHits = searchDocs($('#f_docq', view).value); docActive = 0; showDocs(); });
+    $('#f_docq', view).addEventListener('blur', () => setTimeout(() => {
+      $('#docResults', view)?.classList.add('hidden');
+      if (!st.doctorId) { const q = $('#f_docq', view).value.trim(); const ex = st.doctors.find(d => d.code && String(d.code).toLowerCase() === q.toLowerCase()); if (ex) pickDoctor(ex); else if (q && docHits.length === 1) pickDoctor(docHits[0]); }
+    }, 150));
+
+    // ---- patient search & history ----
     const ptSearch = debounce(async () => {
       const q = $('#ptSearch', view).value.trim(); const box = $('#ptResults', view);
       if (q.length < 2) { box.classList.add('hidden'); return; }
       const like = `%${q}%`;
-      const rows = await lab.all(`SELECT p.*, (SELECT COUNT(*) FROM orders o WHERE o.patient_id=p.id) visits FROM patients p WHERE full_name LIKE ? OR phone LIKE ? OR mrn LIKE ? ORDER BY id DESC LIMIT 10`, [like, like, like]);
-      box.innerHTML = rows.length ? rows.map(p => `<div class="ddItem" data-pid="${p.id}"><span class="code">${esc(p.mrn)}</span><span style="flex:1">${esc(p.full_name)} <small class="muted">ولد ${esc(p.father_name || '—')} · ${sexFa(p.sex)} · ${ageLabel(ageDaysFromBirth(p.birth_date))}</small></span><small class="muted ltr">${esc(p.phone || '')}</small><span class="pill">${p.visits} مراجعه</span></div>`).join('') : '<div class="empty">مریضی پیدا نشد — فرم را برای مریض جدید پر کنید</div>';
+      const rows = await lab.all(`SELECT p.*, (SELECT COUNT(*) FROM orders o WHERE o.patient_id=p.id) visits FROM patients p WHERE full_name LIKE ? OR father_name LIKE ? OR phone LIKE ? OR mrn LIKE ? ORDER BY id DESC LIMIT 10`, [like, like, like, like]);
+      box.innerHTML = rows.length ? rows.map(p => `<div class="ddItem" data-pid="${p.id}"><span class="code">${esc(p.mrn)}</span><span style="flex:1">${esc(p.full_name)} <small class="muted">ولد ${esc(p.father_name || '—')} · ${catFa({ age_days: ageDaysFromBirth(p.birth_date) }, p)} · ${ageLabel(ageDaysFromBirth(p.birth_date))}</small></span><small class="muted ltr">${esc(p.phone || '')}</small><span class="pill">${p.visits} مراجعه</span></div>`).join('') : '<div class="empty">مریضی پیدا نشد — فرم را برای مریض جدید پر کنید</div>';
       box.classList.remove('hidden');
-      $$('.ddItem', box).forEach(el => el.onclick = () => { const p = rows.find(r => r.id === Number(el.dataset.pid)); fillPatient(p); box.classList.add('hidden'); });
+      $$('.ddItem', box).forEach(el => el.onmousedown = (e) => { e.preventDefault(); const p = rows.find(r => r.id === Number(el.dataset.pid)); fillPatient(p); box.classList.add('hidden'); });
     }, 200);
+    const showHistory = async (p) => {
+      const card = $('#ptHistory', view);
+      if (!p) { card.classList.add('hidden'); card.innerHTML = ''; return; }
+      const orders = await lab.all(`SELECT o.*, (SELECT GROUP_CONCAT(IFNULL(t.num_code, t.code), ', ') FROM order_items oi JOIN tests t ON t.id=oi.test_id WHERE oi.order_id=o.id) codes,
+        (SELECT GROUP_CONCAT(oi.test_id) FROM order_items oi WHERE oi.order_id=o.id) tids FROM orders o WHERE o.patient_id=? ORDER BY o.id DESC LIMIT 30`, [p.id]);
+      if (!orders.length) { card.classList.add('hidden'); return; }
+      const debt = orders.filter(o => o.status !== 'cancelled').reduce((a, o) => a + Math.max(0, o.net - o.paid), 0);
+      card.classList.remove('hidden');
+      card.innerHTML = `<div class="cardHead"><h2>سابقه مریض در لابراتوار</h2><span class="pill info">${orders.length} مراجعه</span>${debt > 0.001 ? `<span class="pill bad">بدهی: ${money(debt)}</span>` : ''}</div>
+        <div class="tableWrap" style="max-height:260px"><table class="t"><thead><tr><th>تاریخ</th><th>شماره</th><th>آزمایش‌ها</th><th>مبلغ</th><th>وضعیت</th><th></th></tr></thead><tbody>
+        ${orders.map(o => `<tr><td class="small nowrap">${esc(fmtDate(o.created_at))}</td><td><span class="codeTag">${esc(o.order_no)}</span></td><td class="small en">${esc(o.codes || '')}</td><td class="num">${money(o.net)}${o.net - o.paid > 0.001 && o.status !== 'cancelled' ? ` <span class="pill bad">${money(o.net - o.paid)}</span>` : ''}</td><td>${statusPill(o.status)}</td>
+          <td class="nowrap"><button class="btn sm" data-act="histReport" data-id="${o.id}" title="راپور">${icon('eye', 14)}</button> <button class="btn sm" data-act="repeat" data-tids="${esc(o.tids || '')}" title="تکرار همین آزمایش‌ها">تکرار</button></td></tr>`).join('')}
+        </tbody></table></div>`;
+    };
+    // same name (+ father) already registered → offer the existing file
+    const dupCheck = debounce(async () => {
+      if (st.patientId) return;
+      const name = $('#f_name', view).value.trim(), father = $('#f_father', view).value.trim();
+      const card = $('#ptHistory', view);
+      if (name.length < 3) { card.classList.add('hidden'); return; }
+      const rows = await lab.all(`SELECT p.*, (SELECT COUNT(*) FROM orders o WHERE o.patient_id=p.id) visits, (SELECT MAX(created_at) FROM orders o WHERE o.patient_id=p.id) last FROM patients p
+        WHERE full_name=? ${father ? 'AND (father_name=? OR father_name IS NULL OR father_name=\'\')' : ''} ORDER BY id DESC LIMIT 5`, father ? [name, father] : [name]);
+      if (st.patientId) return;
+      if (!rows.length) { card.classList.add('hidden'); return; }
+      card.classList.remove('hidden');
+      card.innerHTML = `<div class="warnBox" style="margin:0"><b>این مریض قبلاً در لابراتوار ثبت شده است.</b> برای دیدن سابقه، پرونده را انتخاب کنید:</div>
+        ${rows.map(p => `<div class="selRow"><span class="codeTag">${esc(p.mrn)}</span><span style="flex:1">${esc(p.full_name)} <small class="muted">ولد ${esc(p.father_name || '—')} · ${ageLabel(ageDaysFromBirth(p.birth_date))} · ${p.visits} مراجعه${p.last ? ' · آخرین: ' + esc(fmtDate(p.last)) : ''}</small></span><button class="btn sm primary" data-act="pickPt" data-pid="${p.id}">انتخاب</button></div>`).join('')}`;
+      card._rows = rows;
+    }, 350);
     const fillPatient = (p) => {
       st.patientId = p ? p.id : null;
-      $('#f_name', view).value = p?.full_name || ''; $('#f_father', view).value = p?.father_name || ''; $('#f_sex', view).value = p?.sex || 'M';
-      $('#f_phone', view).value = p?.phone || ''; $('#f_addr', view).value = p?.address || ''; $('#f_birth', view).value = p?.birth_date || '';
-      setAgeFromBirth();
+      $('#f_name', view).value = p?.full_name || ''; $('#f_father', view).value = p?.father_name || '';
+      $('#f_phone', view).value = p?.phone || ''; $('#f_addr', view).value = p?.address || '';
+      st.birth = p?.birth_date || null;
+      const days = setAgeFromBirth(st.birth);
+      setTypeFor(days, p?.sex || 'M');
       $('#ptMode', view).className = 'pill ' + (p ? 'good' : 'info');
       $('#ptMode', view).textContent = p ? `مریض قبلی · ${p.mrn}` : 'مریض جدید';
       $('#ptSearch', view).value = '';
-    };
-    const setAgeFromBirth = () => {
-      const days = ageDaysFromBirth($('#f_birth', view).value);
-      if (days === null) { ['#f_ay', '#f_am', '#f_ad'].forEach(s => $(s, view).value = ''); return; }
-      const b = toDate($('#f_birth', view).value), n = new Date();
-      let y = n.getFullYear() - b.getFullYear(), m = n.getMonth() - b.getMonth(), d = n.getDate() - b.getDate();
-      if (d < 0) { m--; d += 30; } if (m < 0) { y--; m += 12; }
-      $('#f_ay', view).value = y || ''; $('#f_am', view).value = m || ''; $('#f_ad', view).value = d && y < 1 ? d : '';
-    };
-    const ageChanged = () => {
-      const y = $('#f_ay', view).value, m = $('#f_am', view).value, d = $('#f_ad', view).value;
-      if (y === '' && m === '' && d === '') return;
-      $('#f_birth', view).value = birthFromAge(y, m, d);
+      showHistory(p).catch(errToast);
     };
     $('#ptSearch', view).addEventListener('input', ptSearch);
     $('#ptSearch', view).addEventListener('blur', () => setTimeout(() => $('#ptResults', view)?.classList.add('hidden'), 200));
-    ['#f_ay', '#f_am', '#f_ad'].forEach(s => $(s, view).addEventListener('input', ageChanged));
-    $('#f_birth', view).addEventListener('change', setAgeFromBirth);
-    $('#f_name', view).addEventListener('input', () => { const s = guessSex($('#f_name', view).value); if (s) $('#f_sex', view).value = s; });
+    ['#f_name', '#f_father'].forEach(s => $(s, view).addEventListener('input', dupCheck));
 
-    // test search with keyboard navigation
+    // ---- test search with keyboard navigation ----
     let hits = [], active = 0;
     const showHits = () => {
       const box = $('#tResults', view);
@@ -122,31 +188,63 @@ Pages.reception = {
       box.innerHTML = hits.map((t, i) => `<div class="ddItem ${i === active ? 'active' : ''}" data-id="${t.id}"><span class="code">${esc(t.num_code ?? '')}</span><span class="nm">${esc(t.name)} <small class="muted en">${esc(t.code)}</small>${t.is_panel ? ' <span class="pill info">Panel</span>' : ''}</span><small class="muted">${esc(Catalog.deptName(t))}</small><span class="pr">${money(t.price)}</span></div>`).join('');
       box.classList.remove('hidden');
       $$('.ddItem', box).forEach(el => el.onmousedown = (e) => { e.preventDefault(); add(Number(el.dataset.id)); clearSearch(); });
+      $('.ddItem.active', box)?.scrollIntoView({ block: 'nearest' });
     };
     const clearSearch = () => { $('#tSearch', view).value = ''; hits = []; showHits(); $('#tSearch', view).focus(); };
-    $('#tSearch', view).addEventListener('input', () => { hits = Catalog.search($('#tSearch', view).value, 12); active = 0; showHits(); });
+    $('#tSearch', view).addEventListener('input', () => { hits = Catalog.search($('#tSearch', view).value, 15); active = 0; showHits(); });
     $('#tSearch', view).addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') { active = Math.min(hits.length - 1, active + 1); showHits(); e.preventDefault(); }
       else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); showHits(); e.preventDefault(); }
-      else if (e.key === 'Enter') { e.preventDefault(); if (hits[active]) { add(hits[active].id); clearSearch(); } }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (hits[active]) { add(hits[active].id); clearSearch(); }
+        else if (!$('#tSearch', view).value.trim()) { $('#fPaid', view).focus(); $('#fPaid', view).select(); }
+        else toast('آزمایشی با این کد پیدا نشد', 'bad');
+      }
       else if (e.key === 'Escape') clearSearch();
     });
     $('#tSearch', view).addEventListener('blur', () => setTimeout(() => $('#tResults', view)?.classList.add('hidden'), 150));
     ['#fDisc', '#fDiscType'].forEach(s => $(s, view).addEventListener('input', renderSel));
     $('#fPaid', view).addEventListener('input', () => { paidTouched.v = true; });
 
+    // ---- Enter moves to the next field ----
+    const navFields = () => $$('[data-nav]', view).filter(el => !el.disabled && el.offsetParent !== null);
+    view.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.ctrlKey || e.altKey) return;
+      const el = e.target;
+      if (el.id === 'f_docq') {
+        e.preventDefault();
+        if (docHits.length && !$('#docResults', view).classList.contains('hidden')) pickDoctor(docHits[docActive]);
+        else if (!st.doctorId && el.value.trim()) { const ex = searchDocs(el.value)[0]; if (ex) pickDoctor(ex); }
+      } else if (el.id === 'fDisc') { e.preventDefault(); $('#fPaid', view).focus(); $('#fPaid', view).select(); return; }
+      else if (el.id === 'fPaid') { e.preventDefault(); $('#btnSave', view).focus(); return; }
+      if (!el.matches('[data-nav]')) return;
+      e.preventDefault();
+      const list = navFields(); const i = list.indexOf(el);
+      const nx = list[i + 1] || $('#tSearch', view);
+      nx.focus(); nx.select && nx.select();
+    });
+    $('#f_docq', view).addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' && docHits.length) { docActive = Math.min(docHits.length - 1, docActive + 1); showDocs(); e.preventDefault(); }
+      if (e.key === 'ArrowUp' && docHits.length) { docActive = Math.max(0, docActive - 1); showDocs(); e.preventDefault(); }
+    });
+
     const save = async (after) => {
       const name = $('#f_name', view).value.trim();
       if (!name) { $('#f_name', view).focus(); return toast('نام مریض الزامی است', 'bad'); }
       if (!st.sel.length) { $('#tSearch', view).focus(); return toast('حداقل یک آزمایش انتخاب کنید', 'bad'); }
-      if (!$('#f_birth', view).value) { $('#f_ay', view).focus(); return toast('سن مریض را وارد کنید (برای محدوده مرجع لازم است)', 'bad'); }
+      const days = ageDays();
+      if (days === null) { $('#f_ay', view).focus(); return toast('سن مریض را وارد کنید (برای نارمل رنج لازم است)', 'bad'); }
+      const type = $('#f_type', view).value;
+      if (type === 'newborn' && days > NEWBORN_MAX_DAYS && !(await confirmDlg('سن وارد شده بیشتر از ۳۱ روز است ولی «نوزاد» انتخاب شده. ادامه می‌دهید؟'))) return;
       const x = net();
       const paid = Math.min(x.net, Math.max(0, Number($('#fPaid', view).value || 0)));
-      const birth = $('#f_birth', view).value;
+      // keep the stored birth date if the age did not change (avoids drifting)
+      const birth = st.birth && ageDaysFromBirth(st.birth) !== null && Math.abs(ageDaysFromBirth(st.birth) - days) < 31 ? st.birth : birthFromAge($('#f_ay', view).value, $('#f_am', view).value, $('#f_ad', view).value);
       const res = await lab.createOrder({
         patient_id: st.patientId,
-        patient: { full_name: name, father_name: $('#f_father', view).value.trim(), sex: $('#f_sex', view).value, birth_date: birth, phone: $('#f_phone', view).value.trim(), address: $('#f_addr', view).value.trim() },
-        doctor_id: Number($('#f_doc', view).value) || null, age_days: ageDaysFromBirth(birth), priority: $('#f_pri', view).value,
+        patient: { full_name: name, father_name: $('#f_father', view).value.trim(), sex: sexOf(), birth_date: birth, phone: $('#f_phone', view).value.trim(), address: $('#f_addr', view).value.trim() },
+        doctor_id: st.doctorId, age_days: ageDaysFromBirth(birth), patient_type: type, priority: $('#f_pri', view).value,
         notes: $('#f_notes', view).value.trim(), test_ids: st.sel, discount: x.disc, payment: { amount: paid, method: $('#fMethod', view).value }
       });
       toast(`پذیرش ${res.order_no} ثبت شد`, 'good');
@@ -156,17 +254,20 @@ Pages.reception = {
       afterSaveDialog(res, data);
       reset();
     };
-    const reset = () => { fillPatient(null); st.sel = []; paidTouched.v = false; $('#fDisc', view).value = 0; $('#f_notes', view).value = ''; $('#f_doc', view).value = ''; $('#f_pri', view).value = 'routine'; renderSel(); $('#f_name', view).focus(); };
+    const reset = () => { fillPatient(null); pickDoctor(null); st.sel = []; paidTouched.v = false; $('#fDisc', view).value = 0; $('#f_notes', view).value = ''; $('#f_pri', view).value = 'routine'; renderSel(); $('#f_name', view).focus(); };
 
     actions(view, {
-      quick: (el) => add(Number(el.dataset.id)), rm: (el) => { st.sel = st.sel.filter(x => x !== Number(el.dataset.id)); renderSel(); },
+      rm: (el) => { st.sel = st.sel.filter(x => x !== Number(el.dataset.id)); renderSel(); },
       reset, save: () => save('receipt'), saveOnly: () => save(null), saveLabels: () => save('labels'),
-      browse: () => browseTests((ids) => ids.forEach(add))
+      browse: () => browseTests((ids) => ids.forEach(add)),
+      histReport: (el) => reportPreview(Number(el.dataset.id)),
+      repeat: (el) => { String(el.dataset.tids || '').split(',').map(Number).filter(id => Catalog.byId.get(id)?.active).forEach(id => { if (!st.sel.includes(id)) add(id); }); },
+      pickPt: (el) => { const p = ($('#ptHistory', view)._rows || []).find(r => r.id === Number(el.dataset.pid)); if (p) fillPatient(p); }
     });
     view.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save('receipt').catch(errToast); } });
 
     if (params.patient) { const p = await lab.get('SELECT * FROM patients WHERE id=?', [params.patient]); if (p) fillPatient(p); }
-    renderSel();
+    renderSel(); syncType();
     setTimeout(() => $('#f_name', view).focus(), 50);
   }
 };
@@ -194,8 +295,8 @@ function browseTests(onPick, { preselected = [] } = {}) {
   let dept = 0;
   const draw = () => {
     const q = $('#bt_q', m.el).value.trim().toLowerCase();
-    const list = Catalog.orderable().filter(t => (!dept || t.department_id === dept) && (!q || (t.code + ' ' + t.name + ' ' + (t.name_fa || '')).toLowerCase().includes(q)));
-    $('#bt_body', m.el).innerHTML = list.map(t => `<tr class="clickable" data-id="${t.id}"><td><input type="checkbox" ${chosen.has(t.id) ? 'checked' : ''}></td><td><span class="codeTag">${esc(t.num_code ?? t.code)}</span></td><td class="en">${esc(t.name)} ${t.is_panel ? '<span class="pill info">Panel</span>' : ''}</td><td class="small muted en">${esc(Catalog.sample(t)?.name || '')}</td><td class="num">${money(t.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">موردی نیست</td></tr>';
+    const list = Catalog.orderable().filter(t => (!dept || t.department_id === dept) && (!q || ((t.num_code ?? '') + ' ' + t.code + ' ' + t.name + ' ' + (t.name_fa || '')).toLowerCase().includes(q)));
+    $('#bt_body', m.el).innerHTML = list.map(t => `<tr class="clickable" data-id="${t.id}"><td><input type="checkbox" ${chosen.has(t.id) ? 'checked' : ''}></td><td><span class="codeTag">${esc(t.num_code ?? t.code)}</span></td><td class="en">${esc(t.name)} <small class="muted">${esc(t.code)}</small> ${t.is_panel ? '<span class="pill info">Panel</span>' : ''}</td><td class="small muted en">${esc(Catalog.sample(t)?.name || '')}</td><td class="num">${money(t.price)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">موردی نیست</td></tr>';
     $('#bt_cnt', m.el).textContent = `${chosen.size} مورد انتخاب شده`;
   };
   $('#bt_depts', m.el).innerHTML = `<button class="on" data-d="0">همه <small>${Catalog.orderable().length}</small></button>` + Catalog.depts.map(d => `<button data-d="${d.id}">${esc(d.name_fa || d.name)} <small>${Catalog.orderable().filter(t => t.department_id === d.id).length}</small></button>`).join('');

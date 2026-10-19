@@ -463,7 +463,7 @@ t('ALLI', 'Allergy Panel - Inhalant (Specific IgE)', 'ALL', 'SER', null, null, n
 // =====================================================================
 // URINALYSIS
 // =====================================================================
-t('UCOL', 'Colour', 'URI', 'UR', null, null, null, 0, C({ opt: ['Pale yellow', 'Yellow', 'Dark yellow', 'Amber', 'Orange', 'Red', 'Brown', 'Colourless'], text: 'Pale yellow' }));
+t('UCOL', 'Colour', 'URI', 'UR', null, null, null, 0, C({ opt: ['Pale yellow', 'Yellow', 'Dark yellow', 'Amber', 'Orange', 'Red', 'Brown', 'Colourless'], text: 'Pale yellow / Yellow' }));
 t('UAPP', 'Appearance', 'URI', 'UR', null, null, null, 0, C({ opt: ['Clear', 'Slightly turbid', 'Turbid', 'Cloudy'] }));
 t('USG', 'Specific Gravity', 'URI', 'UR', null, 1.005, 1.030, 0, C({ dec: 3 }));
 t('UPH', 'pH', 'URI', 'UR', null, 4.5, 8.0, 0, C({ dec: 1 }));

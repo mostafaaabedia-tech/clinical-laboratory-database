@@ -33,7 +33,17 @@ const DEFAULT_SETTINGS = {
   isi: '1.0',
   pt_control: '12.0',
   auto_backup: '1',
-  backup_keep: '14'
+  backup_keep: '14',
+  print_font: 'Vazirmatn',
+  print_font_size: '11.5',
+  print_page: 'A4',
+  print_margin: '12',
+  print_letterhead: '0',          // 1 = pre-printed letterhead paper: no header, leave space on top
+  print_letterhead_top: '45',
+  share_enabled: '1',
+  share_country_code: '93',
+  telegram_bot_token: '',
+  share_message: 'سلام داکتر صاحب، نتایج آزمایش {patient} (پذیرش {order}) آماده است. — {lab}'
 };
 
 function hashPassword(password, salt) {
@@ -159,6 +169,16 @@ class LabDatabase {
         if (!this.all('PRAGMA table_info(tests)').some(c => c.name === 'num_code')) this.db.run('ALTER TABLE tests ADD COLUMN num_code INTEGER');
         this.assignNumCodes();
       }
+      if (v < 3) {
+        this.addColumn('tests', 'section', 'TEXT');
+        this.addColumn('doctors', 'telegram_chat_id', 'TEXT');
+        this.addColumn('orders', 'patient_type', 'TEXT');
+        this.addColumn('order_items', 'cost', 'REAL NOT NULL DEFAULT 0');
+        this.addColumn('inventory_tx', 'unit_cost', 'REAL');
+        this.db.run('UPDATE order_items SET cost = IFNULL((SELECT cost FROM tests t WHERE t.id = order_items.test_id), 0) WHERE cost = 0');
+        this.setDefaultSections();
+        this.db.run("UPDATE tests SET ref_text='Pale yellow / Yellow' WHERE code='UCOL' AND ref_text='Pale yellow'");
+      }
       this.db.run("INSERT OR REPLACE INTO settings(key,value) VALUES('schema_version',?)", [String(SCHEMA_VERSION)]);
     }
   }
@@ -187,6 +207,14 @@ class LabDatabase {
     let n = (mx || base) + 1;
     while (this.scalar('SELECT 1 FROM tests WHERE num_code=?', [n])) n++;
     return n;
+  }
+  addColumn(table, col, def) {
+    if (!this.all(`PRAGMA table_info(${table})`).some(c => c.name === col)) this.db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  }
+  // microscopic parameters of urine / stool are printed in a separate column of the report
+  setDefaultSections() {
+    const micro = ['URBC', 'UWBC', 'UEPI', 'UCAST', 'UCRY', 'UBAC', 'UYST', 'UTRI', 'UMUC', 'UOTH', 'SPUS', 'SRBC', 'SOVA', 'SFAT', 'SSTA', 'SVEG', 'SYST', 'SOTH'];
+    this.db.run(`UPDATE tests SET section='micro' WHERE section IS NULL AND code IN (${micro.map(() => '?').join(',')})`, micro);
   }
   scalarSafe(sql) { try { return this.scalar(sql); } catch (_) { return null; } }
 
@@ -239,6 +267,7 @@ class LabDatabase {
         });
       }
       this.assignNumCodes();
+      this.setDefaultSections();
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');
@@ -298,7 +327,7 @@ class LabDatabase {
       }
       const ids = [...new Set((payload.test_ids || []).map(Number))];
       if (!ids.length) throw new Error('No tests selected');
-      const tests = ids.map(id => this.get('SELECT id, price, active FROM tests WHERE id = ?', [id]));
+      const tests = ids.map(id => this.get('SELECT id, price, cost, active FROM tests WHERE id = ?', [id]));
       if (tests.some(x => !x)) throw new Error('Unknown test');
       const gross = tests.reduce((a, x) => a + Number(x.price || 0), 0);
       const discount = Math.min(gross, Math.max(0, Number(payload.discount || 0)));
@@ -312,11 +341,11 @@ class LabDatabase {
       const daily = this.nextSeq('daily_seq');
       const seq = this.nextSeq('order_seq');
       const orderNo = (this.getSetting('order_prefix', 'L') || '') + '-' + String(seq).padStart(5, '0');
-      this.db.run(`INSERT INTO orders(order_no, daily_no, patient_id, doctor_id, age_days, priority, gross, discount, net, paid, notes, created_by)
-        VALUES(?,?,?,?,?,?,?,?,?,0,?,?)`,
-        normalize([orderNo, daily, patientId, payload.doctor_id || null, payload.age_days ?? null, payload.priority || 'routine', gross, discount, net, payload.notes, user?.username]));
+      this.db.run(`INSERT INTO orders(order_no, daily_no, patient_id, doctor_id, age_days, patient_type, priority, gross, discount, net, paid, notes, created_by)
+        VALUES(?,?,?,?,?,?,?,?,?,?,0,?,?)`,
+        normalize([orderNo, daily, patientId, payload.doctor_id || null, payload.age_days ?? null, payload.patient_type || null, payload.priority || 'routine', gross, discount, net, payload.notes, user?.username]));
       const orderId = this.scalar('SELECT last_insert_rowid()');
-      for (const x of tests) this.db.run('INSERT INTO order_items(order_id, test_id, price) VALUES(?,?,?)', [orderId, x.id, x.price]);
+      for (const x of tests) this.db.run('INSERT INTO order_items(order_id, test_id, price, cost) VALUES(?,?,?,?)', [orderId, x.id, x.price, x.cost || 0]);
       const amt = Math.min(net, Math.max(0, Number(payload.payment?.amount || 0)));
       if (amt > 0) {
         this.db.run('INSERT INTO payments(order_id, amount, method, received_by) VALUES(?,?,?,?)', [orderId, amt, payload.payment.method || 'cash', user?.username]);
@@ -338,8 +367,8 @@ class LabDatabase {
       const have = this.all('SELECT test_id FROM order_items WHERE order_id = ?', [orderId]).map(r => r.test_id);
       for (const tid of have) if (!want.has(tid)) this.db.run('DELETE FROM order_items WHERE order_id=? AND test_id=?', [orderId, tid]);
       for (const tid of want) if (!have.includes(tid)) {
-        const t = this.get('SELECT price FROM tests WHERE id=?', [tid]);
-        if (t) this.db.run('INSERT INTO order_items(order_id,test_id,price) VALUES(?,?,?)', [orderId, tid, t.price]);
+        const t = this.get('SELECT price, cost FROM tests WHERE id=?', [tid]);
+        if (t) this.db.run('INSERT INTO order_items(order_id,test_id,price,cost) VALUES(?,?,?,?)', [orderId, tid, t.price, t.cost || 0]);
       }
       const gross = this.scalar('SELECT IFNULL(SUM(price),0) FROM order_items WHERE order_id=?', [orderId]);
       const disc = Math.min(gross, Math.max(0, Number(discount ?? o.discount)));
@@ -410,6 +439,25 @@ class LabDatabase {
       }
     }
     this.db.run('UPDATE orders SET consumed=1 WHERE id=?', [orderId]);
+  }
+
+  // permanently delete an order (items, results, payments) and give back reagents that were deducted
+  deleteOrder(orderId, reason, user) {
+    return this.transaction(() => {
+      const o = this.get('SELECT * FROM orders WHERE id = ?', [orderId]);
+      if (!o) throw new Error('Order not found');
+      for (const x of this.all("SELECT item_id, SUM(change) ch FROM inventory_tx WHERE order_id=? AND type='auto' GROUP BY item_id", [orderId])) {
+        if (!x.ch) continue;
+        this.db.run('UPDATE inventory_items SET qty = qty - ? WHERE id=?', [x.ch, x.item_id]);
+        this.db.run("INSERT INTO inventory_tx(item_id, change, type, note, created_by) VALUES(?,?,'adjust',?,?)", normalize([x.item_id, -x.ch, `Order ${o.order_no} deleted`, user?.username]));
+      }
+      this.db.run('UPDATE inventory_tx SET order_id=NULL WHERE order_id=?', [orderId]);
+      for (const t of ['payments', 'results', 'order_items']) this.db.run(`DELETE FROM ${t} WHERE order_id=?`, [orderId]);
+      this.db.run('DELETE FROM orders WHERE id=?', [orderId]);
+      this.db.run('INSERT INTO audit_log(user_id, username, action, entity, entity_id, detail) VALUES(?,?,?,?,?,?)',
+        normalize([user?.id, user?.username, 'delete', 'order', orderId, `${o.order_no} net=${o.net} paid=${o.paid} reason: ${reason || ''}`]));
+      return true;
+    });
   }
 
   setPrice(testId, price, user) {

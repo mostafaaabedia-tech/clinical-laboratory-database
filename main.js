@@ -1,5 +1,6 @@
 // Electron main process — Clinical Laboratory System
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard } = require('electron');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 const { LabDatabase } = require('./src/db');
@@ -11,6 +12,33 @@ let currentUser = null;
 const dataDir = () => process.env.LAB_DATA_DIR || path.join(app.getPath('userData'), 'data');
 const dbFile = () => path.join(dataDir(), 'laboratory.sqlite');
 const backupDir = () => path.join(dataDir(), 'backups');
+const reportsDir = () => path.join(app.getPath('documents'), 'Clinical Lab Reports');
+const PAGE_SIZES = ['A4', 'A5', 'Letter', 'Legal'];
+const pageSizeOf = (p) => PAGE_SIZES.includes(p) ? p : 'A4';
+const safeName = (n) => String(n || 'report').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 80) || 'report';
+
+// Telegram Bot API (multipart upload without extra dependencies)
+function telegramCall(token, method, fields = {}, file = null) {
+  return new Promise((resolve, reject) => {
+    const boundary = '----lab' + Date.now().toString(16);
+    const parts = [];
+    for (const [k, v] of Object.entries(fields)) parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+    if (file) {
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${file.field}"; filename="${encodeURIComponent(file.name)}"\r\nContent-Type: application/pdf\r\n\r\n`));
+      parts.push(fs.readFileSync(file.path)); parts.push(Buffer.from('\r\n'));
+    }
+    parts.push(Buffer.from(`--${boundary}--\r\n`));
+    const body = Buffer.concat(parts);
+    const req = https.request({ hostname: 'api.telegram.org', path: `/bot${token}/${method}`, method: 'POST', timeout: 30000,
+      headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': body.length } }, (res) => {
+      let data = ''; res.setEncoding('utf8'); res.on('data', c => data += c);
+      res.on('end', () => { try { const j = JSON.parse(data); j.ok ? resolve(j.result) : reject(new Error('Telegram: ' + (j.description || res.statusCode))); } catch (e) { reject(new Error('Telegram: ' + res.statusCode)); } });
+    });
+    req.on('timeout', () => req.destroy(new Error('Telegram: no response (check internet)')));
+    req.on('error', (e) => reject(new Error('Telegram: ' + e.message)));
+    req.end(body);
+  });
+}
 
 function wasmPath() {
   const p = path.join(__dirname, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
@@ -124,6 +152,7 @@ function registerIpc() {
   handle('order:updateTests', (id, testIds, discount) => { requireLogin(); return db.updateOrderTests(id, testIds, discount, currentUser); });
   handle('order:pay', (id, amount, method, note) => { requireLogin(); return db.addPayment(id, amount, method, note, currentUser); });
   handle('results:save', (id, results, status) => { requireLogin(); return db.saveResults(id, results, status, currentUser); });
+  handle('order:delete', (id, reason) => { requireAdmin(); return db.deleteOrder(id, reason, currentUser); });
   handle('test:setPrice', (id, price) => { requireLogin(); return db.setPrice(id, price, currentUser); });
   handle('audit', (action, entity, id, detail) => { requireLogin(); db.audit(currentUser, action, entity, id, detail); return true; });
 
@@ -173,15 +202,51 @@ function registerIpc() {
     const ext = path.extname(f).slice(1).toLowerCase(); const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'image/jpeg';
     return `data:${mime};base64,${buf.toString('base64')}`;
   });
-  handle('print:pdf', async (name, landscape) => {
-    const r = await dialog.showSaveDialog(win, { defaultPath: (name || 'report') + '.pdf', filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+  handle('print:pdf', async (name, landscape, pageSize) => {
+    const r = await dialog.showSaveDialog(win, { defaultPath: safeName(name) + '.pdf', filters: [{ name: 'PDF', extensions: ['pdf'] }] });
     if (r.canceled || !r.filePath) return null;
-    const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, landscape: !!landscape, margins: { marginType: 'none' } });
+    const pdf = await win.webContents.printToPDF({ pageSize: pageSizeOf(pageSize), printBackground: true, landscape: !!landscape, margins: { marginType: 'none' } });
     fs.writeFileSync(r.filePath, pdf); shell.openPath(r.filePath); return r.filePath;
   });
-  handle('print:print', () => new Promise((resolve) => {
-    win.webContents.print({ silent: false, printBackground: true }, (success, reason) => resolve({ success, reason }));
+  handle('print:print', (pageSize) => new Promise((resolve) => {
+    const opts = { silent: false, printBackground: true };
+    if (pageSize) opts.pageSize = pageSizeOf(pageSize);
+    win.webContents.print(opts, (success, reason) => resolve({ success, reason }));
   }));
+
+  // sharing reports with doctors (WhatsApp / Telegram)
+  handle('share:pdf', async (name, pageSize) => {
+    requireLogin();
+    fs.mkdirSync(reportsDir(), { recursive: true });
+    const file = path.join(reportsDir(), safeName(name) + '.pdf');
+    const pdf = await win.webContents.printToPDF({ pageSize: pageSizeOf(pageSize), printBackground: true, margins: { marginType: 'none' } });
+    fs.writeFileSync(file, pdf); return file;
+  });
+  handle('share:open', (url) => {
+    requireLogin();
+    if (!/^(https:\/\/(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com|t\.me)\/|whatsapp:\/\/|tg:\/\/)/.test(String(url))) throw new Error('Link not allowed');
+    return shell.openExternal(url);
+  });
+  handle('share:showFile', (p) => { requireLogin(); if (String(p).startsWith(reportsDir())) shell.showItemInFolder(p); return true; });
+  handle('share:copy', (text) => { clipboard.writeText(String(text || '')); return true; });
+  handle('telegram:send', async (chatId, filePath, caption) => {
+    requireLogin();
+    const token = db.getSetting('telegram_bot_token', '');
+    if (!token) throw new Error('توکن ربات تلگرام در تنظیمات وارد نشده است');
+    if (!String(filePath).startsWith(reportsDir()) || !fs.existsSync(filePath)) throw new Error('File not found');
+    await telegramCall(token, 'sendDocument', { chat_id: String(chatId), caption: String(caption || '').slice(0, 1000) }, { field: 'document', path: filePath, name: path.basename(filePath) });
+    db.audit(currentUser, 'send_telegram', 'report', null, `${chatId} ${path.basename(filePath)}`);
+    return true;
+  });
+  handle('telegram:updates', async () => {
+    requireLogin();
+    const token = db.getSetting('telegram_bot_token', '');
+    if (!token) throw new Error('توکن ربات تلگرام در تنظیمات وارد نشده است');
+    const ups = await telegramCall(token, 'getUpdates', { limit: '100' });
+    const chats = new Map();
+    for (const u of ups) { const m = u.message || u.edited_message; if (m && m.chat) chats.set(m.chat.id, { id: m.chat.id, name: [m.chat.first_name, m.chat.last_name].filter(Boolean).join(' ') || m.chat.title || '', username: m.chat.username || '', text: m.text || '' }); }
+    return [...chats.values()];
+  });
 }
 
 app.whenReady().then(async () => {

@@ -228,7 +228,7 @@ table.res .prev { color: var(--muted); font-size: 12px; }
 
 /* ---------- printable documents ---------- */
 #printArea { display: none; }
-.doc { background: #fff; color: #111; width: 210mm; min-height: 297mm; margin: 0 auto; padding: 12mm 12mm 14mm; box-shadow: var(--shadow); font-size: 11.5px; direction: ltr; position: relative; }
+.doc { background: #fff; color: #111; width: 210mm; min-height: 297mm; margin: 0 auto; padding: 12mm 12mm 14mm; box-shadow: var(--shadow); font-size: var(--rf, 11.5px); direction: ltr; position: relative; }
 .docPreview { background: #e9edf2; padding: 20px; border-radius: 12px; overflow: auto; }
 .docHead { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #0f4c81; padding-bottom: 10px; margin-bottom: 10px; }
 .docHead img { width: 64px; height: 64px; object-fit: contain; }
@@ -238,14 +238,14 @@ table.res .prev { color: var(--muted); font-size: 12px; }
 .docHead .labName div { font-size: 10.5px; color: #444; margin-top: 3px; }
 .docHead .barcode { text-align: center; }
 .docTitle { text-align: center; font-size: 14px; font-weight: 700; letter-spacing: .5px; margin: 6px 0 8px; color: #0f4c81; }
-.ptBox { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px 16px; border: 1px solid #888; border-radius: 6px; padding: 7px 10px; margin-bottom: 10px; font-size: 11px; }
+.ptBox { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px 16px; border: 1px solid #888; border-radius: 6px; padding: 7px 10px; margin-bottom: 10px; font-size: calc(var(--rf, 11.5px) - .5px); }
 .ptBox b { font-weight: 700; }
 .ptBox span { color: #555; }
 .rSec { margin-bottom: 9px; break-inside: avoid; page-break-inside: avoid; }
-.rSec h3 { margin: 0; font-size: 12px; background: #eef3f8; border: 1px solid #b9c6d3; border-bottom: 0; padding: 4px 8px; color: #0b3a63; text-transform: uppercase; letter-spacing: .3px; }
+.rSec h3 { margin: 0; font-size: calc(var(--rf, 11.5px) + .5px); background: #eef3f8; border: 1px solid #b9c6d3; border-bottom: 0; padding: 4px 8px; color: #0b3a63; text-transform: uppercase; letter-spacing: .3px; }
 .rSec h4 { margin: 0; font-size: 11.5px; padding: 4px 8px; border: 1px solid #b9c6d3; border-bottom: 0; background: #f8fafc; }
-table.rt { width: 100%; border-collapse: collapse; font-size: 11px; }
-table.rt th { text-align: left; border: 1px solid #b9c6d3; padding: 3px 7px; background: #f8fafc; font-size: 10.5px; }
+table.rt { width: 100%; border-collapse: collapse; font-size: calc(var(--rf, 11.5px) - .5px); }
+table.rt th { text-align: left; border: 1px solid #b9c6d3; padding: 3px 7px; background: #f8fafc; font-size: calc(var(--rf, 11.5px) - 1px); }
 table.rt td { border: 1px solid #d3dbe3; padding: 3px 7px; }
 table.rt td.v { font-weight: 700; white-space: nowrap; }
 table.rt td.v.abn { color: #b42318; }
@@ -253,6 +253,7 @@ table.rt td.v.low { color: #175cd3; }
 table.rt .f { font-size: 9.5px; font-weight: 800; margin-left: 4px; }
 table.rt td.memo { white-space: pre-wrap; }
 .cbcTwo { display: grid; grid-template-columns: 1.55fr 1fr; gap: 6px; }
+.twoCol { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: start; }
 .docFoot { position: absolute; bottom: 9mm; left: 12mm; right: 12mm; border-top: 1px solid #999; padding-top: 5px; font-size: 9.5px; color: #555; display: flex; justify-content: space-between; gap: 10px; }
 .sign { display: flex; justify-content: space-between; margin-top: 26px; font-size: 11px; }
 .sign div { min-width: 200px; text-align: center; border-top: 1px solid #555; padding-top: 4px; }
@@ -311,3 +312,15 @@ table.rt td.memo { white-space: pre-wrap; }
 .deptEdit { opacity: 0; display: inline-flex; align-items: center; padding: 0 4px; border-radius: 6px; color: var(--primary, #2563eb); }
 .deptList button:hover .deptEdit { opacity: 1; }
 .deptEdit:hover { background: var(--surface-2); }
+/* reception form: compact 6-column grid */
+.recForm { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px 12px; }
+.recForm .c1 { grid-column: span 1; } .recForm .c2 { grid-column: span 2; } .recForm .c3 { grid-column: span 3; } .recForm .c6 { grid-column: 1 / -1; }
+.recForm .inputGroup > * { min-width: 0; flex: 1; }
+.recForm #f_csex { flex: 0 0 76px; }
+#ptHistory { margin-top: 16px; }
+
+.optPop { z-index: 300; max-height: 260px; }
+.optPop .ddItem { padding: 6px 10px; }
+.optPop .ddItem .code { min-width: 34px; font-weight: 700; }
+.lowBanner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lowBanner .pill { cursor: pointer; }

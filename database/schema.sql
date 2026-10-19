@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS tests (
   critical_high  REAL,
   formula        TEXT,                                 -- calculated tests, e.g. {HCT}*10/{RBC}
   method         TEXT,
+  section        TEXT,                                 -- report section, e.g. 'micro' = microscopic (printed in a side column)
   price          REAL NOT NULL DEFAULT 0,
   cost           REAL NOT NULL DEFAULT 0,
   tat_hours      INTEGER NOT NULL DEFAULT 24,
@@ -121,6 +122,7 @@ CREATE TABLE IF NOT EXISTS doctors (
   phone          TEXT,
   clinic         TEXT,
   commission_pct REAL NOT NULL DEFAULT 0,
+  telegram_chat_id TEXT,                              -- for sending reports by Telegram bot
   active         INTEGER NOT NULL DEFAULT 1,
   created_at     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -149,6 +151,7 @@ CREATE TABLE IF NOT EXISTS orders (
   patient_id   INTEGER NOT NULL REFERENCES patients(id) ON DELETE RESTRICT,
   doctor_id    INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
   age_days     INTEGER,                                -- patient age at time of order (for ranges)
+  patient_type TEXT,                                   -- newborn | child | male | female
   status       TEXT NOT NULL DEFAULT 'registered'
                CHECK (status IN ('registered','sampled','in_progress','completed','approved','delivered','cancelled')),
   priority     TEXT NOT NULL DEFAULT 'routine' CHECK (priority IN ('routine','urgent')),
@@ -175,6 +178,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   test_id  INTEGER NOT NULL REFERENCES tests(id) ON DELETE RESTRICT,
   price    REAL NOT NULL DEFAULT 0,                    -- price at time of sale
+  cost     REAL NOT NULL DEFAULT 0,                    -- cost at time of sale (for profit)
   UNIQUE (order_id, test_id)
 );
 CREATE INDEX IF NOT EXISTS ix_items_test ON order_items(test_id);
@@ -246,6 +250,7 @@ CREATE TABLE IF NOT EXISTS inventory_tx (
   item_id    INTEGER NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
   change     REAL NOT NULL,
   type       TEXT NOT NULL CHECK (type IN ('in','out','adjust','auto')),
+  unit_cost  REAL,                                    -- purchase price per unit (type = in)
   order_id   INTEGER REFERENCES orders(id) ON DELETE SET NULL,
   note       TEXT,
   created_by TEXT,
@@ -263,7 +268,7 @@ CREATE TABLE IF NOT EXISTS test_consumables (
 -- ---------- Reporting views ----------
 DROP VIEW IF EXISTS v_order_summary;
 CREATE VIEW v_order_summary AS
-SELECT o.id, o.order_no, o.created_at, o.status, o.priority, o.gross, o.discount, o.net, o.paid,
+SELECT o.id, o.order_no, o.created_at, o.status, o.priority, o.age_days, o.patient_type, o.gross, o.discount, o.net, o.paid,
        (o.net - o.paid) AS balance,
        p.id AS patient_id, p.mrn, p.full_name AS patient_name, p.sex, p.phone,
        d.name AS doctor_name,
@@ -295,4 +300,4 @@ WHERE m.month IS NOT NULL;
 
 DROP VIEW IF EXISTS v_low_stock;
 CREATE VIEW v_low_stock AS
-SELECT * FROM inventory_items WHERE active = 1 AND qty <= reorder_level;
+SELECT * FROM inventory_items WHERE active = 1 AND (qty <= reorder_level OR qty < 3);

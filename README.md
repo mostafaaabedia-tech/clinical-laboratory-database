@@ -20,6 +20,10 @@ First login: **admin / 1234** (you are asked to change it immediately).
 ## Features
 
 **Daily work**
+- **Reception (v1.1)** — compact form (name + father side by side, category + age on one row). Category is **نوزاد (newborn, ≤31 days) / خورد سال (child, ≤14 years) / آقا / خانم**, set automatically from the age. No birth date needed. **Enter moves to the next field**. Tests are picked by numeric code (401 = CBC) or name; doctors are picked by code or name. A returning patient's **lab history** is shown (with "repeat tests"), and a warning appears when the same name is already registered.
+- **Option results by code** — urine/stool fields accept the option code (1, 2, 3… or your own codes such as `32=Yellow`) or typed text. **"Star all"** marks every field `*` (= not needed, not printed); then fill only what is needed.
+- **Urine / stool report** — physical/chemical on one side and microscopic on the other side.
+- **Send report to doctor** — WhatsApp / Telegram link with the PDF ready, or automatic sending with a Telegram bot.
 - **Reception** — new or returning patient (search by name / phone / file no.), age in years-months-days, referring doctor, urgent flag, test search by numeric code (401 = CBC), letter code or name with keyboard (↑ ↓ Enter), quick buttons for common tests, full catalog browser, discount (amount or %), partial payment, receipt and **barcode sample labels**.
 - **Worklist & result entry** — pending / ready-to-approve / approved queues, urgent first. Grouped result sheet per panel, **automatic calculations** (MCV, MCH, MCHC, absolute counts, indirect bilirubin, globulin, A/G ratio, BUN, eGFR CKD-EPI 2021, LDL/VLDL, anion gap, TSAT, INR, HOMA-IR, eAG, ACR, PSA ratio…), live **H / L / critical (HH/LL) / abnormal** flags, **sex- and age-specific reference ranges**, previous result of the same patient (delta check), per-test comments, “Normal” button for urine/stool, `*` = not done.
 - **Approval workflow** — registered → sampled → in progress → completed → **approved (locked)** → delivered. Un-approving needs a reason and is logged.

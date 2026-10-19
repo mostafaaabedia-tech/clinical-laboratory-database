@@ -9,7 +9,7 @@ Pages.settings = {
     const chk = (k) => s[k] === '1' ? 'checked' : '';
     view.innerHTML = `
       <div class="pageHead"><div><h1>تنظیمات و پشتیبان‌گیری</h1><p>اطلاعات لابراتوار، راپور، شماره‌گذاری، مالی و دیتابیس</p></div></div>
-      <div class="tabs">${[['lab', 'اطلاعات لابراتوار'], ['report', 'راپور و چاپ'], ['system', 'شماره‌گذاری و مالی'], ['data', 'دیتابیس و پشتیبان']].map(([k, n]) => `<button data-act="tab" data-t="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="tabs">${[['lab', 'اطلاعات لابراتوار'], ['report', 'راپور'], ['print', 'تنظیمات چاپ'], ['share', 'ارسال به داکتر'], ['system', 'شماره‌گذاری و مالی'], ['data', 'دیتابیس و پشتیبان']].map(([k, n]) => `<button data-act="tab" data-t="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div>
       <div class="card" id="setForm">
       ${tab === 'lab' ? `<div class="formGrid">
         <label class="field span2"><span>نام لابراتوار (دری)</span><input name="lab_name" value="${v('lab_name')}"></label>
@@ -29,6 +29,25 @@ Pages.settings = {
         <label class="field"><span>ISI (برای محاسبه INR)</span><input type="number" step="0.01" name="isi" value="${v('isi')}"></label>
         <label class="field"><span>PT کنترل (ثانیه)</span><input type="number" step="0.1" name="pt_control" value="${v('pt_control')}"></label></div>
         <p class="small muted">INR = (PT مریض ÷ PT کنترل) ^ ISI — مقادیر را از بروشور معرف خود وارد کنید.</p>` : ''}
+      ${tab === 'print' ? `<div class="formGrid">
+        <label class="field"><span>فونت راپور</span><select name="print_font">${['Vazirmatn', 'Arial', 'Tahoma', 'Calibri', 'Segoe UI', 'Times New Roman', 'B Nazanin'].map(f => `<option ${s.print_font === f ? 'selected' : ''} style="font-family:'${f}'">${f}</option>`).join('')}</select></label>
+        <label class="field"><span>اندازه فونت (px)</span><input type="number" min="8" max="16" step="0.5" name="print_font_size" value="${v('print_font_size')}"></label>
+        <label class="field"><span>اندازه صفحه</span><select name="print_page">${[['A4', 'A4 (210×297)'], ['A5', 'A5 (148×210)'], ['Letter', 'Letter'], ['Legal', 'Legal']].map(([k, n]) => `<option value="${k}" ${printPage() === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="field"><span>حاشیه صفحه (میلی‌متر)</span><input type="number" min="3" max="30" name="print_margin" value="${v('print_margin')}"></label>
+        <label class="check full"><input type="checkbox" name="print_letterhead" ${chk('print_letterhead')}> کاغذ سربرگ‌دار (چاپی) — سربرگ لابراتوار چاپ نشود و بالای صفحه خالی بماند</label>
+        <label class="field"><span>فاصله خالی بالای صفحه (میلی‌متر)</span><input type="number" min="0" max="120" name="print_letterhead_top" value="${v('print_letterhead_top')}"></label></div>
+        <div class="row" style="margin-top:14px"><button class="btn" data-act="printPreview">${icon('eye', 16)} پیش‌نمایش راپور با این تنظیمات</button></div>
+        <p class="small muted">رسید (۸۰ میلی‌متر) و لیبل‌ها از این تنظیمات تأثیر نمی‌گیرند. برای فونت‌هایی مثل B Nazanin باید فونت روی ویندوز نصب باشد.</p>` : ''}
+      ${tab === 'share' ? `<div class="formGrid">
+        <label class="check full"><input type="checkbox" name="share_enabled" ${s.share_enabled !== '0' ? 'checked' : ''}> دکمه «ارسال به داکتر» در پیش‌نمایش راپور نمایش داده شود</label>
+        <label class="field"><span>کد کشور (برای شماره‌های 07…)</span><input name="share_country_code" value="${v('share_country_code')}" class="ltr"></label>
+        <label class="field span2"><span>توکن ربات تلگرام (اختیاری — برای ارسال خودکار)</span><input name="telegram_bot_token" value="${v('telegram_bot_token')}" class="ltr" placeholder="123456789:AA…" autocomplete="off"></label>
+        <label class="field full"><span>متن پیام — <span class="kbd">{patient}</span> نام مریض · <span class="kbd">{order}</span> شماره پذیرش · <span class="kbd">{doctor}</span> داکتر · <span class="kbd">{lab}</span> نام لابراتوار</span><textarea name="share_message" rows="3">${v('share_message')}</textarea></label></div>
+        <div class="row" style="margin-top:14px"><button class="btn" data-act="testBot">${icon('send', 16)} آزمایش اتصال ربات تلگرام</button></div>
+        <div class="infoBox small" style="margin-top:14px"><b>روش کار:</b> در پیش‌نمایش راپور دکمه «ارسال به داکتر» را بزنید.<br>
+          • <b>واتساپ:</b> چت داکتر (با شماره تلفن ثبت‌شده در صفحه پزشکان) باز می‌شود، پیام آماده است و فایل PDF در پوشه نشان داده می‌شود تا ضمیمه کنید.<br>
+          • <b>تلگرام با ربات (خودکار):</b> در تلگرام با <span class="ltr">@BotFather</span> یک ربات بسازید و توکن آن را این‌جا وارد کنید. هر داکتر یک بار به ربات پیام بفرستد؛ سپس در صفحه پزشکان «یافتن Chat ID» را بزنید. بعد از آن راپور PDF با یک کلیک مستقیم برای داکتر ارسال می‌شود.<br>
+          • کامپیوتر باید به انترنت وصل باشد.</div>` : ''}
       ${tab === 'system' ? `<div class="formGrid">
         <label class="field"><span>پیشوند شماره پذیرش</span><input name="order_prefix" value="${v('order_prefix')}" class="ltr"></label>
         <label class="field"><span>آخرین شماره پذیرش</span><input type="number" name="order_seq" value="${v('order_seq')}"></label>
@@ -56,6 +75,22 @@ Pages.settings = {
         const p = await lab.restore(); if (p) { toast('بازیابی انجام شد. دوباره وارد شوید.', 'good'); setTimeout(() => location.reload(), 900); }
       },
       folder: () => lab.openBackupFolder(),
+      testBot: async () => { const vals = formValues($('#setForm', view)); await lab.saveSettings({ telegram_bot_token: vals.telegram_bot_token || '' }); await loadSettings(); const c = await lab.telegramUpdates(); toast(`اتصال ربات برقرار است ✓ (${c.length} گفتگو)`, 'good'); },
+      printPreview: async () => {
+        const vals = formValues($('#setForm', view)); for (const k of Object.keys(vals)) if ($(`[name="${k}"]`, view).type === 'checkbox') vals[k] = vals[k] ? '1' : '0';
+        const saved = { ...App.settings }; Object.assign(App.settings, vals);
+        try {
+          const last = await lab.get("SELECT id FROM orders WHERE status IN ('completed','approved','delivered') ORDER BY id DESC LIMIT 1");
+          let html;
+          if (last) html = reportHTML(await loadOrderFull(last.id));
+          else {
+            const pick = ['GLUF', 'CHOL', 'TG', 'HGB', 'TSH'].map(c => Catalog.byCode.get(c)).filter(Boolean);
+            const res = new Map(pick.map((t, i) => [t.id, { test_id: t.id, value: String([95, 210, 140, 13.8, 2.1][i]), flag: i === 1 ? 'H' : null, unit: t.unit, ref_display: refDisplay(t, resolveRange(t, 'M', 12000)) }]));
+            html = reportHTML({ order: { order_no: 'L-00000', created_at: new Date().toISOString(), age_days: 12000, status: 'approved' }, patient: { full_name: 'Sample Patient', mrn: 'P000000', sex: 'M' }, doctor: null, items: pick.map(t => ({ test_id: t.id })), results: res, payments: [], prev: new Map() });
+          }
+          modal({ title: 'پیش‌نمایش چاپ', size: 'xwide', body: `<div class="docPreview">${html}</div>` });
+        } finally { Object.keys(App.settings).forEach(k => delete App.settings[k]); Object.assign(App.settings, saved); }
+      },
       demo: () => makeDemoData(), undemo: () => removeDemoData()
     });
   }

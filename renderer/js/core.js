@@ -124,6 +124,40 @@ function ageLabelEn(days) {
 }
 const sexFa = s => s === 'F' ? 'زن' : 'مرد';
 const sexEn = s => s === 'F' ? 'Female' : 'Male';
+// patient category: newborn (up to 31 days), child (up to 14 years), male, female
+const NEWBORN_MAX_DAYS = 31, CHILD_MAX_DAYS = Math.floor(15 * 365.25) - 1;
+const PT_TYPES = { newborn: 'نوزاد', child: 'خورد سال', male: 'آقا', female: 'خانم' };
+const PT_TYPES_EN = { newborn: 'Newborn', child: 'Child', male: 'Male', female: 'Female' };
+function ptTypeFromAge(ageDays, sex) {
+  if (ageDays !== null && ageDays !== undefined && ageDays !== '') {
+    if (ageDays <= NEWBORN_MAX_DAYS) return 'newborn';
+    if (ageDays <= CHILD_MAX_DAYS) return 'child';
+  }
+  return sex === 'F' ? 'female' : 'male';
+}
+const ptTypeOf = (o, p) => o?.patient_type || ptTypeFromAge(o?.age_days, p?.sex ?? o?.sex);
+const catFa = (o, p) => PT_TYPES[ptTypeOf(o, p)];
+const catEn = (o, p) => { const t = ptTypeOf(o, p); const sx = p?.sex ?? o?.sex; return (t === 'newborn' || t === 'child') ? `${PT_TYPES_EN[t]} (${sx === 'F' ? 'F' : 'M'})` : PT_TYPES_EN[t]; };
+
+// result options can carry a short code: "32=Yellow" (code 32) or plain "Yellow" (code = position)
+function parseOptions(list) {
+  return (list || []).map((raw, i) => {
+    const m = String(raw).match(/^\s*(\d+)\s*=\s*(.+)$/);
+    return m ? { code: m[1], value: m[2].trim(), raw } : { code: String(i + 1), value: String(raw).trim(), raw };
+  });
+}
+
+// print settings for A4/A5 reports
+const PAGE_MM = { A4: [210, 297], A5: [148, 210], Letter: [216, 279], Legal: [216, 356] };
+function printPage() { return PAGE_MM[App.settings.print_page] ? App.settings.print_page : 'A4'; }
+function reportDocStyle() {
+  const s = App.settings; const [w, h] = PAGE_MM[printPage()];
+  const m = Math.max(3, Math.min(30, Number(s.print_margin) || 12));
+  const top = s.print_letterhead === '1' ? Math.max(m, Number(s.print_letterhead_top) || 45) : m;
+  const fs = Math.max(8, Math.min(16, Number(s.print_font_size) || 11.5));
+  const font = s.print_font && s.print_font !== 'Vazirmatn' ? `'${String(s.print_font).replace(/'/g, '')}', Vazirmatn, sans-serif` : 'Vazirmatn, Arial, sans-serif';
+  return `width:${w}mm;min-height:${h}mm;padding:${top}mm ${m}mm ${m + 2}mm;--rf:${fs}px;font-family:${font}`;
+}
 
 // ---------------- status ----------------
 const STATUS = {
@@ -288,7 +322,8 @@ function computeFlag(test, value, range) {
   }
   if (test.result_type === 'option' && test.ref_text) {
     const opts = test.optionList || [];
-    if (opts.some(o => o.toLowerCase() === v.toLowerCase()) && v.toLowerCase() !== String(test.ref_text).toLowerCase()) return 'A';
+    const normals = String(test.ref_text).split(/\s*[\/|]\s*/).map(x => x.toLowerCase());
+    if (opts.some(o => o.toLowerCase() === v.toLowerCase()) && !normals.includes(v.toLowerCase())) return 'A';
   }
   return null;
 }

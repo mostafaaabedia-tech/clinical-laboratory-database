@@ -27,9 +27,9 @@ Pages.orders = {
       rows = await lab.all(`SELECT * FROM v_order_summary WHERE ${w.join(' AND ')} ORDER BY id DESC LIMIT 1000`, p);
       $('#o_body', view).innerHTML = rows.map(o => `<tr class="clickable" data-act="open" data-id="${o.id}">
         <td><span class="codeTag">${esc(o.order_no)}</span>${o.priority === 'urgent' ? ' <span class="pill bad">عاجل</span>' : ''}</td><td class="c num">${o.daily_no ?? ''}</td>
-        <td class="small">${esc(fmtDateTime(o.created_at))}</td><td><b>${esc(o.patient_name)}</b><div class="small muted">${esc(o.mrn)} · ${sexFa(o.sex)}</div></td>
+        <td class="small">${esc(fmtDateTime(o.created_at))}</td><td><b>${esc(o.patient_name)}</b><div class="small muted">${esc(o.mrn)} · ${catFa(o)} · ${ageLabel(o.age_days)}</div></td>
         <td class="small">${esc(o.doctor_name || '—')}</td><td class="c">${o.test_count}</td><td class="num">${money(o.net)}</td><td>${payPill(o)}</td><td>${statusPill(o.status)}</td>
-        <td><button class="btn sm" data-act="open" data-id="${o.id}">${icon('eye', 14)}</button></td></tr>`).join('') || '<tr><td colspan="10" class="empty">پذیرشی با این فیلتر پیدا نشد</td></tr>';
+        <td class="nowrap"><button class="btn sm" data-act="open" data-id="${o.id}" title="باز کردن">${icon('eye', 14)}</button>${App.user.role === 'admin' ? ` <button class="btn sm ghost dangerText" data-act="del" data-id="${o.id}" title="حذف پذیرش">${icon('trash', 14)}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">پذیرشی با این فیلتر پیدا نشد</td></tr>';
       const live = rows.filter(r => r.status !== 'cancelled');
       $('#o_cnt', view).textContent = `${rows.length} پذیرش`;
       $('#o_sum', view).textContent = money(live.reduce((a, r) => a + r.net, 0));
@@ -39,6 +39,7 @@ Pages.orders = {
     $('#o_q', view).addEventListener('input', debounce(() => load().catch(errToast), 250));
     actions(view, {
       open: (el) => orderDetail(Number(el.dataset.id), load), new: () => go('reception'),
+      del: async (el, e) => { e.stopPropagation(); const o = rows.find(r => r.id === Number(el.dataset.id)); if (await deleteOrderDlg(o)) load(); },
       csv: () => exportCSV('orders', rows, [['order_no', 'Order No'], ['created_at', 'Date'], ['patient_name', 'Patient'], ['mrn', 'MRN'], ['phone', 'Phone'], ['doctor_name', 'Doctor'], ['test_count', 'Tests'], ['gross', 'Gross'], ['discount', 'Discount'], ['net', 'Net'], ['paid', 'Paid'], ['balance', 'Balance'], [r => STATUS[r.status]?.[0], 'Status']])
     });
     await load();
@@ -56,7 +57,7 @@ async function orderDetail(id, onChange) {
     <div class="grid g2">
       <div class="card" style="margin:0"><h2>مریض</h2><table class="t"><tbody>
         <tr><td class="muted">نام</td><td><b>${esc(p.full_name)}</b> <span class="muted">ولد ${esc(p.father_name || '—')}</span></td></tr>
-        <tr><td class="muted">پرونده / جنس / سن</td><td>${esc(p.mrn)} · ${sexFa(p.sex)} · ${ageLabel(o.age_days)}</td></tr>
+        <tr><td class="muted">پرونده / جنس / سن</td><td>${esc(p.mrn)} · ${catFa(o, p)} · ${ageLabel(o.age_days)}</td></tr>
         <tr><td class="muted">تماس</td><td class="ltr" style="text-align:right">${esc(p.phone || '—')}</td></tr>
         <tr><td class="muted">پزشک</td><td>${esc(d?.name || 'خودمراجعه')}</td></tr>
         <tr><td class="muted">ثبت</td><td>${esc(fmtDateTime(o.created_at))} · ${esc(o.created_by || '')}</td></tr>
@@ -82,7 +83,8 @@ async function orderDetail(id, onChange) {
       <button class="btn ghost" data-a="receipt">${icon('print', 16)} رسید</button>
       <button class="btn ghost" data-a="labels">${icon('barcode', 16)} لیبل</button>
       ${o.paid > 0 && can('pay') ? `<button class="btn ghost" data-a="refund">بازپرداخت</button>` : ''}
-      ${!locked && App.user.role === 'admin' ? `<button class="btn ghost dangerText" data-a="cancel">لغو پذیرش</button>` : ''}` });
+      ${!locked && App.user.role === 'admin' ? `<button class="btn ghost dangerText" data-a="cancel">لغو پذیرش</button>` : ''}
+      ${App.user.role === 'admin' ? `<button class="btn ghost dangerText" data-a="delete">${icon('trash', 16)} حذف</button>` : ''}` });
   const refresh = async () => { m.close(); onChange && await onChange(); orderDetail(id, onChange); refreshAlerts(); };
   m.el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
@@ -99,6 +101,7 @@ async function orderDetail(id, onChange) {
       if (a === 'receipt') await printDoc(receiptHTML(data));
       if (a === 'labels') await printDoc(labelsHTML(data));
       if (a === 'editTests') { if (await editTestsDlg(o, items)) refresh(); }
+      if (a === 'delete') { if (await deleteOrderDlg({ ...o, patient_name: p.full_name })) { m.close(); onChange && await onChange(); refreshAlerts(); } }
       if (a === 'cancel') {
         if (!(await confirmDlg('این پذیرش لغو شود؟ مبلغ آن از فروش حذف می‌شود. (پرداخت‌ها را جداگانه بازپرداخت کنید)', { danger: true, okText: 'لغو پذیرش' }))) return;
         await lab.run("UPDATE orders SET status='cancelled' WHERE id=?", [id]); await lab.audit('cancel', 'order', id, o.order_no); refresh();
@@ -159,13 +162,15 @@ async function reportPreview(id) {
   const approved = ['approved', 'delivered'].includes(data.order.status);
   const m = modal({ title: `راپور ${esc(data.order.order_no)} — ${esc(data.patient.full_name)}`, size: 'xwide', body: `${approved ? '' : '<div class="warnBox">این راپور هنوز تأیید نهایی نشده است و با علامت «PRELIMINARY» چاپ می‌شود.</div>'}<div class="docPreview">${html}</div>`,
     foot: `<button class="btn primary" data-a="print">${icon('print', 16)} چاپ</button><button class="btn" data-a="pdf">${icon('pdf', 16)} ذخیره PDF</button>
+      ${App.settings.share_enabled !== '0' ? `<button class="btn" data-a="send">${icon('send', 16)} ارسال به داکتر</button>` : ''}
       ${data.order.status === 'completed' && can('approve') ? `<button class="btn success" data-a="approve">${icon('check', 16)} تأیید نهایی</button>` : ''}
       ${approved && can('approve') ? `<button class="btn ghost dangerText" data-a="unapprove">${icon('unlock', 16)} لغو تأیید</button>` : ''}` });
   m.el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
     try {
-      if (a === 'print') await printDoc(html);
-      if (a === 'pdf') await printDoc(html, { pdf: `${data.order.order_no}-${data.patient.full_name}` });
+      if (a === 'print') await printDoc(html, { pageSize: printPage() });
+      if (a === 'pdf') await printDoc(html, { pdf: `${data.order.order_no}-${data.patient.full_name}`, pageSize: printPage() });
+      if (a === 'send') await sendReportDlg(data, html);
       if (a === 'approve') { await approveOrder(id); m.close(); reportPreview(id); }
       if (a === 'unapprove') { await unapproveOrder(id); m.close(); reportPreview(id); }
     } catch (err) { errToast(err); }
@@ -181,4 +186,77 @@ async function unapproveOrder(id) {
   if (why === null) return;
   await lab.run("UPDATE orders SET status='completed', approved_by=NULL, approved_at=NULL WHERE id=?", [id]);
   await lab.audit('unapprove', 'order', id, why); toast('تأیید لغو شد؛ اکنون قابل اصلاح است');
+}
+
+// permanently delete an order (admin)
+async function deleteOrderDlg(o) {
+  const why = await promptDlg(`حذف پذیرش ${o.order_no} — ${o.patient_name || ''}`, { label: 'این پذیرش با نتایج و پرداخت‌هایش برای همیشه حذف می‌شود. دلیل حذف را بنویسید:', okText: 'حذف برای همیشه' });
+  if (why === null) return false;
+  if (!why.trim()) { toast('دلیل حذف را بنویسید', 'bad'); return false; }
+  await lab.deleteOrder(o.id, why.trim());
+  toast(`پذیرش ${o.order_no} حذف شد`, 'good');
+  return true;
+}
+
+// ---------- send report to doctor / patient (WhatsApp, Telegram) ----------
+function intlPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  const cc = String(App.settings.share_country_code || '93').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  else if (d.startsWith('0')) d = cc + d.slice(1);
+  else if (d.length <= 9) d = cc + d;
+  return d;
+}
+async function sendReportDlg(data, html) {
+  const { order: o, patient: p, doctor: doc0 } = data;
+  const doctors = await lab.all('SELECT * FROM doctors WHERE active=1 ORDER BY name');
+  const s = App.settings;
+  const msg0 = String(s.share_message || '').replace(/\{patient\}/g, p.full_name).replace(/\{order\}/g, o.order_no).replace(/\{lab\}/g, s.lab_name || '').replace(/\{doctor\}/g, doc0?.name || '');
+  const hasBot = !!s.telegram_bot_token;
+  const m = modal({ title: `ارسال راپور ${esc(o.order_no)} — ${esc(p.full_name)}`, size: 'wide', body: `
+    <div class="formGrid">
+      <label class="field span2"><span>گیرنده</span><select id="sd_to"><option value="">— شماره دستی —</option>${p.phone ? `<option value="patient">مریض: ${esc(p.full_name)} (${esc(p.phone)})</option>` : ''}${doctors.map(d => `<option value="${d.id}" ${doc0 && doc0.id === d.id ? 'selected' : ''}>داکتر ${esc(d.name)}${d.code ? ' (' + esc(d.code) + ')' : ''}${d.phone ? ' — ' + esc(d.phone) : ''}</option>`).join('')}</select></label>
+      <label class="field"><span>شماره واتساپ / تلگرام</span><input id="sd_phone" class="ltr" placeholder="07xxxxxxxx"></label>
+      <label class="field"><span>Telegram Chat ID (ربات)</span><input id="sd_chat" class="ltr" placeholder="${hasBot ? '' : 'ربات تنظیم نشده'}"></label>
+      <label class="field full"><span>پیام</span><textarea id="sd_msg" rows="3">${esc(msg0)}</textarea></label>
+    </div>
+    <div class="infoBox small" style="margin-top:12px">فایل PDF راپور در پوشه «Clinical Lab Reports» (در Documents) ذخیره و نمایش داده می‌شود.<br>
+      <b>واتساپ / تلگرام:</b> چت گیرنده باز می‌شود و پیام کپی شده است؛ فایل PDF را از پوشه به داخل چت بکشید (Drag) یا با دکمه سنجاق ضمیمه کنید.<br>
+      <b>ربات تلگرام:</b> اگر توکن ربات در تنظیمات و Chat ID داکتر ثبت شده باشد، فایل خودکار ارسال می‌شود.</div>`,
+    foot: `<button class="btn success" data-s="wa">واتساپ</button><button class="btn primary" data-s="tg">تلگرام</button>${hasBot ? `<button class="btn primary" data-s="bot">${icon('send', 16)} ارسال خودکار با ربات تلگرام</button>` : ''}<button class="btn ghost" data-s="pdfOnly">${icon('pdf', 16)} فقط ساخت PDF</button>` });
+  const fill = () => {
+    const v = $('#sd_to', m.el).value;
+    const d = doctors.find(x => String(x.id) === v);
+    $('#sd_phone', m.el).value = v === 'patient' ? (p.phone || '') : d ? (d.phone || '') : '';
+    $('#sd_chat', m.el).value = d ? (d.telegram_chat_id || '') : '';
+  };
+  $('#sd_to', m.el).addEventListener('change', fill); fill();
+  const makePdf = async () => {
+    $('#printArea').innerHTML = html; await new Promise(r => setTimeout(r, 150));
+    try { return await lab.sharePdf(`${o.order_no} ${p.full_name}`, printPage()); } finally { setTimeout(() => { $('#printArea').innerHTML = ''; }, 300); }
+  };
+  m.el.addEventListener('click', async (e) => {
+    const k = e.target.closest('[data-s]')?.dataset.s; if (!k) return;
+    const btn = e.target.closest('button'); btn.disabled = true;
+    try {
+      const phone = intlPhone($('#sd_phone', m.el).value), text = $('#sd_msg', m.el).value.trim();
+      if ((k === 'wa') && !phone) return toast('شماره واتساپ را وارد کنید', 'bad');
+      if (k === 'bot' && !$('#sd_chat', m.el).value.trim()) return toast('Chat ID تلگرام گیرنده را وارد کنید (از صفحه پزشکان قابل دریافت است)', 'bad');
+      const file = await makePdf();
+      if (k === 'pdfOnly') { await lab.showFile(file); toast('PDF ساخته شد', 'good'); return; }
+      if (k === 'bot') {
+        await lab.telegramSend($('#sd_chat', m.el).value.trim(), file, text);
+        const d = doctors.find(x => String(x.id) === $('#sd_to', m.el).value);
+        if (d && d.telegram_chat_id !== $('#sd_chat', m.el).value.trim()) await lab.run('UPDATE doctors SET telegram_chat_id=? WHERE id=?', [$('#sd_chat', m.el).value.trim(), d.id]);
+        toast('راپور با تلگرام ارسال شد ✓', 'good'); m.close(); return;
+      }
+      await lab.copyText(text);
+      await lab.showFile(file);
+      if (k === 'wa') await lab.openLink(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`);
+      if (k === 'tg') await lab.openLink(phone ? `https://t.me/+${phone}` : `tg://msg?text=${encodeURIComponent(text)}`);
+      await lab.audit('share', 'order', o.id, `${k} ${phone}`);
+      toast('چت باز شد؛ پیام کپی شده — فایل PDF را ضمیمه کنید', 'good');
+    } catch (err) { errToast(err); } finally { btn.disabled = false; }
+  });
 }
