@@ -3,16 +3,20 @@
 
 const Catalog = {
   tests: [], byId: new Map(), byCode: new Map(), children: new Map(), ranges: new Map(),
-  depts: [], deptById: new Map(), samples: [], sampleById: new Map(),
+  depts: [], deptById: new Map(), samples: [], sampleById: new Map(), kits: [], kitById: new Map(), recTypes: [], recTypeById: new Map(),
 
   async load() {
-    const [tests, items, ranges, depts, samples] = await Promise.all([
+    const [tests, items, ranges, depts, samples, kits, recTypes] = await Promise.all([
       lab.all('SELECT * FROM tests ORDER BY sort, id'),
       lab.all('SELECT panel_id, test_id FROM panel_items ORDER BY panel_id, sort'),
       lab.all('SELECT * FROM reference_ranges ORDER BY test_id, id'),
       lab.all('SELECT * FROM departments ORDER BY sort, id'),
-      lab.all('SELECT * FROM sample_types ORDER BY id')
+      lab.all('SELECT * FROM sample_types ORDER BY id'),
+      lab.all('SELECT * FROM kits ORDER BY test_id, id'),
+      lab.all('SELECT * FROM reception_types ORDER BY sort, id')
     ]);
+    this.kits = kits; this.kitById = new Map(kits.map(k => [k.id, k]));
+    this.recTypes = recTypes; this.recTypeById = new Map(recTypes.map(r => [r.id, r]));
     this.tests = tests;
     this.byId = new Map(); this.byCode = new Map(); this.children = new Map(); this.ranges = new Map();
     for (const t of tests) {
@@ -36,6 +40,9 @@ const Catalog = {
   dept(t) { return this.deptById.get(t?.department_id) || null; },
   deptName(t) { const d = this.dept(t); return d ? (d.name_fa || d.name) : '—'; },
   sample(t) { return this.sampleById.get(t?.sample_type_id) || null; },
+  kitsOf(id) { return this.kits.filter(k => k.test_id === id); },
+  kit(t) { return this.kitById.get(t?.active_kit_id) || null; },
+  readyAnswers(t) { return String(t?.ready_answers || '').split('\n').map(x => x.trim()).filter(Boolean); },
   orderable() { return this.tests.filter(t => t.active && t.orderable); },
   // leaf (result-bearing) tests under a test, recursively, in order
   leaves(id, seen = new Set()) {

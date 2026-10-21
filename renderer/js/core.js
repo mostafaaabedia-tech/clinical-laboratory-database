@@ -34,6 +34,7 @@ const ICONS = {
   download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3', upload: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
   copy: 'M20 9h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1',
   barcode: 'M3 5v14M7 5v14M10 5v14M14 5v14M17 5v14M21 5v14', flask: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3',
+  refresh: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5', trend: 'M3 17l6-6 4 4 8-8M15 7h6v6', star: 'M12 2l3 7h7l-5.5 4.5 2 7.5-6.5-4.5L5.5 21l2-7.5L2 9h7z',
   lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4', unlock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 7.9-1', send: 'M22 2L11 13M22 2l-7 20-4-9-9-4z'
 };
 function icon(name, size = 18) {
@@ -156,7 +157,8 @@ function reportDocStyle() {
   const top = s.print_letterhead === '1' ? Math.max(m, Number(s.print_letterhead_top) || 45) : m;
   const fs = Math.max(8, Math.min(16, Number(s.print_font_size) || 11.5));
   const font = s.print_font && s.print_font !== 'Vazirmatn' ? `'${String(s.print_font).replace(/'/g, '')}', Vazirmatn, sans-serif` : 'Vazirmatn, Arial, sans-serif';
-  return `width:${w}mm;min-height:${h}mm;padding:${top}mm ${m}mm ${m + 2}mm;--rf:${fs}px;font-family:${font}`;
+  const ls = Math.max(0, Math.min(3, Number(s.report_letter_spacing) || 0)), lh = Math.max(1, Math.min(2.2, Number(s.report_line_height) || 1.35));
+  return `width:${w}mm;min-height:${h}mm;padding:${top}mm ${m}mm ${m + 2}mm;--rf:${fs}px;font-family:${font};letter-spacing:${ls}px;line-height:${lh}`;
 }
 
 // ---------------- status ----------------
@@ -289,16 +291,32 @@ function evalFormula(formula, values, vars = {}) {
 }
 
 // ---------------- reference ranges & flags ----------------
-function resolveRange(test, sex, ageDays) {
-  const rs = (Catalog.ranges.get(test.id) || []).filter(r =>
+// ranges of the kit used (or the test's active kit); rows without a kit are the general ranges
+function resolveRange(test, sex, ageDays, kitId) {
+  const kid = kitId === undefined ? (test.active_kit_id || null) : (kitId || null);
+  const all = (Catalog.ranges.get(test.id) || []).filter(r =>
     (r.sex === 'A' || r.sex === sex) &&
     (r.age_min_days === null || ageDays === null || ageDays >= r.age_min_days) &&
     (r.age_max_days === null || ageDays === null || ageDays < r.age_max_days));
+  const kitRows = kid ? all.filter(r => r.kit_id === kid) : [];
+  const rs = kitRows.length ? kitRows : all.filter(r => !r.kit_id);
   rs.sort((a, b) => (b.sex !== 'A') - (a.sex !== 'A') || span(a) - span(b));
   const r = rs[0];
-  if (r) return { low: r.low, high: r.high, text: r.text };
-  return { low: test.ref_low, high: test.ref_high, text: null };
+  const base = { possible_low: test.possible_low ?? null, possible_high: test.possible_high ?? null, kit_id: kitRows.length ? kid : null };
+  if (r) return { ...base, low: r.low, high: r.high, text: r.text, alarm_low: r.alarm_low ?? null, alarm_high: r.alarm_high ?? null, crit_low: r.crit_low ?? null, crit_high: r.crit_high ?? null };
+  return { ...base, low: test.ref_low, high: test.ref_high, text: null, alarm_low: null, alarm_high: null, crit_low: null, crit_high: null };
   function span(x) { return (x.age_max_days ?? 1e7) - (x.age_min_days ?? 0); }
+}
+const hasV = (v) => v !== null && v !== undefined && v !== '';
+// alarm (warning) range: outside it the result is shown with a warning but it is not critical yet
+function alarmOf(test, value, range) {
+  if (test.result_type !== 'numeric') return null;
+  const n = num(String(value ?? '').trim().replace(/^[<>]=?\s*/, '')); if (n === null) return null;
+  if (hasV(range.possible_low) && n < range.possible_low) return 'impossible';
+  if (hasV(range.possible_high) && n > range.possible_high) return 'impossible';
+  if (hasV(range.alarm_low) && n < range.alarm_low) return 'alarm';
+  if (hasV(range.alarm_high) && n > range.alarm_high) return 'alarm';
+  return null;
 }
 function refDisplay(test, range) {
   if (range.text) return range.text;
@@ -314,8 +332,9 @@ function computeFlag(test, value, range) {
   if (test.result_type === 'numeric') {
     const n = num(v.replace(/^[<>]=?\s*/, ''));
     if (n === null) return null;
-    if (test.critical_low !== null && n < test.critical_low) return 'LL';
-    if (test.critical_high !== null && n > test.critical_high) return 'HH';
+    const cl = hasV(range.crit_low) ? range.crit_low : test.critical_low, ch = hasV(range.crit_high) ? range.crit_high : test.critical_high;
+    if (cl !== null && cl !== undefined && n < cl) return 'LL';
+    if (ch !== null && ch !== undefined && n > ch) return 'HH';
     if (range.low !== null && range.low !== undefined && n < range.low) return 'L';
     if (range.high !== null && range.high !== undefined && n > range.high) return 'H';
     return null;
@@ -342,6 +361,7 @@ const NAV = [
   ['finance', 'مالی و مصارف', 'finance', ['admin', 'finance']],
   ['inventory', 'موجودی و مواد', 'inventory', ['admin', 'lab']],
   ['doctors', 'پزشکان', 'doctors', ['admin', 'reception']],
+  ['labstats', 'آمار مراجعین و انواع پذیرش', 'chart', ['admin', 'reception', 'finance']],
   ['users', 'کاربران', 'users', ['admin']],
   ['audit', 'گزارش فعالیت‌ها', 'audit', ['admin']],
   ['settings', 'تنظیمات و پشتیبان', 'settings', ['admin']]

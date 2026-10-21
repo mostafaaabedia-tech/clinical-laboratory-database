@@ -1,7 +1,7 @@
 // Complete database schema for the Clinical Laboratory System (SQLite).
 // SCHEMA_VERSION is stored in settings; add migrations in db.js when it changes.
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
 PRAGMA foreign_keys = ON;
@@ -115,6 +115,37 @@ CREATE TABLE IF NOT EXISTS price_history (
   new_price  REAL,
   changed_by TEXT,
   changed_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- kits (reagent brand / lot) per test: each kit has its own normal, alarm, critical and possible ranges
+CREATE TABLE IF NOT EXISTS kits (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_id    INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,                            -- kit description / brand
+  company    TEXT,
+  lot_no     TEXT,
+  expiry     TEXT,                                     -- YYYY-MM-DD
+  method     TEXT,
+  active     INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS ix_kits_test ON kits(test_id);
+
+-- reception types / contracts: free price, insurance (patient share %), staff discount ...
+CREATE TABLE IF NOT EXISTS reception_types (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  code            TEXT,
+  name            TEXT NOT NULL,
+  price_basis     TEXT NOT NULL DEFAULT 'free' CHECK (price_basis IN ('free','insurance')),
+  patient_pct     REAL NOT NULL DEFAULT 100,           -- patient share; the rest is paid by the organisation
+  increase_pct    REAL NOT NULL DEFAULT 0,             -- increase of the price list
+  discount_pct    REAL NOT NULL DEFAULT 0,             -- automatic discount of the patient share
+  max_tests       INTEGER,
+  required_fields TEXT,                                -- JSON array: id_number, phone, birth_date, father_name, address
+  org_name        TEXT,
+  notes           TEXT,
+  active          INTEGER NOT NULL DEFAULT 1,
+  sort            INTEGER NOT NULL DEFAULT 0
 );
 
 -- ---------- People ----------

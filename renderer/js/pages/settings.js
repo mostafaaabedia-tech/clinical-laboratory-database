@@ -9,7 +9,7 @@ Pages.settings = {
     const chk = (k) => s[k] === '1' ? 'checked' : '';
     view.innerHTML = `
       <div class="pageHead"><div><h1>تنظیمات و پشتیبان‌گیری</h1><p>اطلاعات لابراتوار، راپور، شماره‌گذاری، مالی و دیتابیس</p></div></div>
-      <div class="tabs">${[['lab', 'اطلاعات لابراتوار'], ['report', 'راپور'], ['print', 'تنظیمات چاپ'], ['share', 'ارسال به داکتر'], ['system', 'شماره‌گذاری و مالی'], ['data', 'دیتابیس و پشتیبان']].map(([k, n]) => `<button data-act="tab" data-t="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="tabs">${[['lab', 'اطلاعات لابراتوار'], ['report', 'راپور'], ['print', 'تنظیمات چاپ'], ['rules', 'قوانین پذیرش و جواب'], ['labels', 'رسید و لیبل'], ['share', 'ارسال به داکتر'], ['system', 'شماره‌گذاری و مالی'], ['data', 'دیتابیس و پشتیبان']].map(([k, n]) => `<button data-act="tab" data-t="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div>
       <div class="card" id="setForm">
       ${tab === 'lab' ? `<div class="formGrid">
         <label class="field span2"><span>نام لابراتوار (دری)</span><input name="lab_name" value="${v('lab_name')}"></label>
@@ -26,6 +26,17 @@ Pages.settings = {
         <label class="field full"><span>متن پایین راپور</span><input name="report_footer" value="${v('report_footer')}"></label>
         <label class="check"><input type="checkbox" name="report_show_previous" ${chk('report_show_previous')}> نمایش نتیجه قبلی مریض در راپور</label>
         <label class="check"><input type="checkbox" name="report_show_method" ${chk('report_show_method')}> نمایش روش آزمایش</label>
+        <label class="field"><span>تعداد جواب‌های قبلی در راپور</span><select name="report_prev_count">${[1, 2, 3].map(n => `<option ${String(n) === String(s.report_prev_count || 1) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="check"><input type="checkbox" name="report_arrows" ${chk('report_arrows')}> فلش ▲ ▼ کنار نتایج بالا / پایین</label>
+        <label class="check"><input type="checkbox" name="report_color_names" ${chk('report_color_names')}> نام آزمایش‌های غیرطبیعی رنگی چاپ شود</label>
+        <label class="check"><input type="checkbox" name="report_row_shade" ${chk('report_row_shade')}> سطرها یک در میان سایه‌دار</label>
+        <label class="check"><input type="checkbox" name="report_flags_box" ${chk('report_flags_box')}> کادر Fast / Non Fast / Urgent / Pregnant و Clinical Notes</label>
+        <label class="check"><input type="checkbox" name="report_show_kit" ${chk('report_show_kit')}> نام کیت و Lot زیر نام آزمایش</label>
+        <label class="check"><input type="checkbox" name="report_sign_names" ${chk('report_sign_names')}> نام کاربر بررسی‌کننده / تأییدکننده زیر امضاء</label>
+        <label class="field"><span>امضای سمت چپ</span><input name="report_sign_left" value="${v('report_sign_left')}" class="ltr"></label>
+        <label class="field"><span>امضای سمت راست</span><input name="report_sign_right" value="${v('report_sign_right')}" class="ltr"></label>
+        <label class="field"><span>فاصله حروف (px)</span><input type="number" min="0" max="3" step="0.05" name="report_letter_spacing" value="${v('report_letter_spacing')}"></label>
+        <label class="field"><span>فاصله سطرها</span><input type="number" min="1" max="2.2" step="0.05" name="report_line_height" value="${v('report_line_height')}"></label>
         <label class="field"><span>ISI (برای محاسبه INR)</span><input type="number" step="0.01" name="isi" value="${v('isi')}"></label>
         <label class="field"><span>PT کنترل (ثانیه)</span><input type="number" step="0.1" name="pt_control" value="${v('pt_control')}"></label></div>
         <p class="small muted">INR = (PT مریض ÷ PT کنترل) ^ ISI — مقادیر را از بروشور معرف خود وارد کنید.</p>` : ''}
@@ -38,6 +49,27 @@ Pages.settings = {
         <label class="field"><span>فاصله خالی بالای صفحه (میلی‌متر)</span><input type="number" min="0" max="120" name="print_letterhead_top" value="${v('print_letterhead_top')}"></label></div>
         <div class="row" style="margin-top:14px"><button class="btn" data-act="printPreview">${icon('eye', 16)} پیش‌نمایش راپور با این تنظیمات</button></div>
         <p class="small muted">رسید (۸۰ میلی‌متر) و لیبل‌ها از این تنظیمات تأثیر نمی‌گیرند. برای فونت‌هایی مثل B Nazanin باید فونت روی ویندوز نصب باشد.</p>` : ''}
+      ${tab === 'rules' ? `<div class="formGrid">
+        <label class="field"><span>حداقل روز تا جواب</span><input type="number" min="0" name="answer_days" value="${v('answer_days')}"></label>
+        <label class="field"><span>هشدار تکرار آزمایش (روز — ۰ = خاموش)</span><input type="number" min="0" name="warn_repeat_days" value="${v('warn_repeat_days')}"></label>
+        <label class="field"><span>جواب‌های قبلی در ثبت نتیجه (ماه اخیر)</span><input type="number" min="1" name="prev_months" value="${v('prev_months')}"></label>
+        <label class="check"><input type="checkbox" name="warn_dup_id" ${s.warn_dup_id !== '0' ? 'checked' : ''}> هشدار نمبر تذکره تکراری</label>
+        <label class="check"><input type="checkbox" name="discount_reason_required" ${chk('discount_reason_required')}> تخفیف بدون دلیل ثبت نشود</label>
+        <label class="check"><input type="checkbox" name="results_lock_approved" ${s.results_lock_approved !== '0' ? 'checked' : ''}> نتایج تأیید شده قفل شوند</label>
+        <label class="field full"><span>دلایل تخفیف — هر خط یک دلیل</span><textarea name="discount_reasons" rows="5">${v('discount_reasons')}</textarea></label></div>
+        <p class="small muted">«انواع پذیرش» (آزاد، بیمه، کارمندان…) در صفحه «انواع پذیرش و آمار» تعریف می‌شوند. زمان جواب هر آزمایش و روزهای انجام آن در تعریف آزمایش (زبانه «نمونه، ارسال، نرخ و روزها») است.</p>` : ''}
+      ${tab === 'labels' ? `<div class="formGrid">
+        <div class="field full"><span><b>رسید</b></span></div>
+        <label class="check"><input type="checkbox" name="receipt_answer_date" ${s.receipt_answer_date !== '0' ? 'checked' : ''}> تاریخ جواب در رسید</label>
+        <label class="check"><input type="checkbox" name="receipt_weekday" ${s.receipt_weekday !== '0' ? 'checked' : ''}> نام روز هفته</label>
+        <label class="check"><input type="checkbox" name="receipt_type" ${s.receipt_type !== '0' ? 'checked' : ''}> نوع پذیرش</label>
+        <div class="field full"><span><b>لیبل نمونه</b></span></div>
+        <label class="check"><input type="checkbox" name="label_lab_name" ${s.label_lab_name !== '0' ? 'checked' : ''}> نام لابراتوار</label>
+        <label class="check"><input type="checkbox" name="label_urgent" ${s.label_urgent !== '0' ? 'checked' : ''}> علامت URGENT برای عاجل</label>
+        <label class="check"><input type="checkbox" name="label_en_digits" ${s.label_en_digits !== '0' ? 'checked' : ''}> اعداد انگلیسی</label>
+        <label class="check"><input type="checkbox" name="label_datetime" ${s.label_datetime !== '0' ? 'checked' : ''}> تاریخ و ساعت</label>
+        <label class="check"><input type="checkbox" name="label_tests" ${s.label_tests !== '0' ? 'checked' : ''}> کد آزمایش‌ها</label>
+        <label class="check"><input type="checkbox" name="label_archive" ${chk('label_archive')}> یک لیبل اضافه برای آرشیف</label></div>` : ''}
       ${tab === 'share' ? `<div class="formGrid">
         <label class="check full"><input type="checkbox" name="share_enabled" ${s.share_enabled !== '0' ? 'checked' : ''}> دکمه «ارسال به داکتر» در پیش‌نمایش راپور نمایش داده شود</label>
         <label class="field"><span>کد کشور (برای شماره‌های 07…)</span><input name="share_country_code" value="${v('share_country_code')}" class="ltr"></label>

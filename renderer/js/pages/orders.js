@@ -62,9 +62,17 @@ async function orderDetail(id, onChange) {
         <tr><td class="muted">پزشک</td><td>${esc(d?.name || 'خودمراجعه')}</td></tr>
         <tr><td class="muted">ثبت</td><td>${esc(fmtDateTime(o.created_at))} · ${esc(o.created_by || '')}</td></tr>
         ${o.approved_at ? `<tr><td class="muted">تأیید</td><td>${esc(fmtDateTime(o.approved_at))} · ${esc(o.approved_by || '')}</td></tr>` : ''}
-        ${o.notes ? `<tr><td class="muted">یادداشت</td><td>${esc(o.notes)}</td></tr>` : ''}</tbody></table></div>
+        ${o.notes ? `<tr><td class="muted">یادداشت</td><td>${esc(o.notes)}</td></tr>` : ''}
+        ${p.id_number ? `<tr><td class="muted">نمبر تذکره</td><td class="ltr" style="text-align:right">${esc(p.id_number)}</td></tr>` : ''}
+        ${data.rtype ? `<tr><td class="muted">نوع پذیرش</td><td>${esc(data.rtype.name)}${p.insurance_no ? ` · بیمه ${esc(p.insurance_no)}` : ''}</td></tr>` : ''}
+        ${o.fasting || o.pregnant || o.sample_flag || o.priority === 'urgent' ? `<tr><td class="muted">وضعیت</td><td>${o.priority === 'urgent' ? '<span class="pill bad">عاجل</span> ' : ''}${o.fasting ? `<span class="pill">${o.fasting === 'fast' ? 'ناشتا' : 'غیر ناشتا'}</span> ` : ''}${o.pregnant ? '<span class="pill violet">حامله</span> ' : ''}${o.sample_flag ? `<span class="pill warn">${esc(o.sample_flag)}</span>` : ''}</td></tr>` : ''}
+        ${o.clinical_notes ? `<tr><td class="muted">Clinical Notes</td><td class="ltr" style="text-align:right">${esc(o.clinical_notes)}</td></tr>` : ''}
+        ${o.answer_date ? `<tr><td class="muted">تاریخ جواب</td><td><b>${esc(fmtDate(o.answer_date))}</b> <small class="muted">${esc(WEEKDAYS[toDate(o.answer_date + 'T12:00:00').getDay()])}</small></td></tr>` : ''}
+        ${o.checked_by ? `<tr><td class="muted">Checked by</td><td>${esc(o.checked_by)} <small class="muted">${esc(fmtDateTime(o.checked_at))}</small></td></tr>` : ''}
+        ${o.print_count ? `<tr><td class="muted">چاپ راپور</td><td>${o.print_count} بار</td></tr>` : ''}</tbody></table></div>
       <div class="card" style="margin:0"><div class="cardHead"><h2>مالی</h2>${payPill(o)}</div><table class="t"><tbody>
-        <tr><td class="muted">مجموع</td><td class="num">${money(o.gross)}</td></tr><tr><td class="muted">تخفیف</td><td class="num">${money(o.discount)}</td></tr>
+        <tr><td class="muted">مجموع</td><td class="num">${money(o.gross)}</td></tr>${o.org_share ? `<tr><td class="muted">سهم مؤسسه / بیمه</td><td class="num">${money(o.org_share)}</td></tr>` : ''}
+        <tr><td class="muted">تخفیف${o.discount_reason ? ` <small>(${esc(o.discount_reason)}${o.discount_by ? ' — ' + esc(o.discount_by) : ''})</small>` : ''}</td><td class="num">${money(o.discount)}</td></tr>
         <tr><td><b>خالص</b></td><td class="num"><b>${money(o.net)}</b></td></tr><tr><td class="muted">پرداخت‌شده</td><td class="num">${money(o.paid)}</td></tr>
         <tr><td><b>باقی‌مانده</b></td><td class="num"><b>${money(o.net - o.paid)}</b></td></tr></tbody></table>
         <div class="small muted" style="margin-top:8px">${payments.map(x => `${esc(fmtDateTime(x.paid_at))}: ${money(x.amount)} (${esc(PAY_METHODS[x.method] || x.method)}) ${esc(x.received_by || '')}`).join('<br>') || 'پرداختی ثبت نشده'}</div></div>
@@ -168,8 +176,8 @@ async function reportPreview(id) {
   m.el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
     try {
-      if (a === 'print') await printDoc(html, { pageSize: printPage() });
-      if (a === 'pdf') await printDoc(html, { pdf: `${data.order.order_no}-${data.patient.full_name}`, pageSize: printPage() });
+      if (a === 'print') { await printDoc(html, { pageSize: printPage() }); await lab.run('UPDATE orders SET print_count=print_count+1 WHERE id=?', [id]); }
+      if (a === 'pdf') { await printDoc(html, { pdf: `${data.order.order_no}-${data.patient.full_name}`, pageSize: printPage() }); await lab.run('UPDATE orders SET print_count=print_count+1 WHERE id=?', [id]); }
       if (a === 'send') await sendReportDlg(data, html);
       if (a === 'approve') { await approveOrder(id); m.close(); reportPreview(id); }
       if (a === 'unapprove') { await unapproveOrder(id); m.close(); reportPreview(id); }

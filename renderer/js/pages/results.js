@@ -46,7 +46,24 @@ async function resultEntry(view, orderId) {
   const groups = buildResultGroups(data.items.map(i => i.test_id));
   const vars = { AGE: Math.floor((o.age_days || 0) / 365.25), FEMALE: p.sex === 'F' ? 1 : 0, ISI: Number(App.settings.isi || 1), PTC: Number(App.settings.pt_control || 12) };
   const allTests = groups.flatMap(g => g.items);
-  const rangeOf = new Map(allTests.map(t => [t.id, resolveRange(t, p.sex, o.age_days)]));
+  const kitOf = (t) => data.results.get(t.id)?.kit_id || t.active_kit_id || null;
+  const rangeOf = new Map(allTests.map(t => [t.id, resolveRange(t, p.sex, o.age_days, kitOf(t))]));
+  const nPrev = Math.min(4, Math.max(1, ...allTests.map(t => (data.prevs.get(t.id) || []).length)));
+  const rtName = data.rtype ? data.rtype.name : '';
+  const SF = { hemolyzed: 'همولیز', lipemic: 'لیپمیک', icteric: 'ایکتریک', clotted: 'لخته', low: 'نمونه کم', repeat: 'تکرار نمونه' };
+  const nav = await lab.get(`SELECT (SELECT id FROM orders WHERE id<? AND status IN ('registered','sampled','in_progress','completed') ORDER BY id DESC LIMIT 1) prev_id,
+    (SELECT id FROM orders WHERE id>? AND status IN ('registered','sampled','in_progress','completed') ORDER BY id ASC LIMIT 1) next_id`, [orderId, orderId]);
+  const info = [
+    rtName && ['نوع پذیرش', esc(rtName) + (o.org_share ? ` <small class="muted">(سهم مؤسسه ${money(o.org_share)})</small>` : '')],
+    o.priority === 'urgent' && ['', '<span class="pill bad">عاجل (Urgent)</span>'],
+    o.fasting && ['', `<span class="pill ${o.fasting === 'fast' ? 'good' : 'warn'}">${o.fasting === 'fast' ? 'ناشتا (Fast)' : 'غیر ناشتا (Non Fast)'}</span>`],
+    o.pregnant && ['', '<span class="pill violet">حامله (Pregnant)</span>'],
+    o.sample_flag && ['نمونه', `<span class="pill warn">${esc(SF[o.sample_flag] || o.sample_flag)}</span>`],
+    o.answer_date && ['تاریخ جواب', esc(fmtDate(o.answer_date))],
+    o.clinical_notes && ['Clinical Notes', `<b class="ltr">${esc(o.clinical_notes)}</b>`],
+    ['پذیرش', esc(o.created_by || '—')], o.checked_by && ['Checked by', esc(o.checked_by)], o.approved_by && ['تأیید', esc(o.approved_by)],
+    o.print_count && ['چاپ', `${o.print_count} بار`]
+  ].filter(Boolean);
 
   const inputFor = (t) => {
     const r = data.results.get(t.id); const v = r ? r.value : '';
@@ -54,24 +71,31 @@ async function resultEntry(view, orderId) {
     if (t.formula) return `<input data-tid="${t.id}" class="calc" readonly tabindex="-1" value="${esc(v)}" title="${esc(t.formula)}">`;
     if (t.result_type === 'memo') return `<textarea data-tid="${t.id}" rows="2" ${dis} style="direction:ltr;text-align:left">${esc(v)}</textarea>`;
     if (t.result_type === 'option') return `<input data-tid="${t.id}" data-opt="1" value="${esc(v)}" ${dis} autocomplete="off" placeholder="کد یا متن" title="${esc(t.opts.map(o => o.code + ' = ' + o.value).join('  |  '))}">`;
-    return `<input data-tid="${t.id}" value="${esc(v)}" ${dis} autocomplete="off" ${t.result_type === 'numeric' ? 'inputmode="decimal"' : ''}>`;
+    const ra = Catalog.readyAnswers(t);
+    return `<input data-tid="${t.id}" value="${esc(v)}" ${dis} autocomplete="off" ${t.result_type === 'numeric' && !ra.length ? 'inputmode="decimal"' : ''} ${ra.length ? `list="ra${t.id}"` : ''}>${ra.length ? `<datalist id="ra${t.id}">${ra.map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : ''}`;
   };
   view.innerHTML = `
     <div class="pageHead"><div><h1>ثبت نتایج — <span class="codeTag" style="font-size:18px">${esc(o.order_no)}</span></h1>
       <p><b>${esc(p.full_name)}</b> · ولد ${esc(p.father_name || '—')} · ${catFa(o, p)} · ${ageLabel(o.age_days)} · ${esc(data.doctor?.name || 'خودمراجعه')} · ${statusPill(o.status)} ${o.notes ? '· یادداشت: ' + esc(o.notes) : ''}</p></div>
-      <div class="toolbar"><button class="btn" data-act="back">بازگشت به صف</button><button class="btn" data-act="preview">${icon('eye', 16)} پیش‌نمایش</button>
+      <div class="toolbar"><button class="btn" data-act="back">بازگشت به صف</button>
+      <button class="btn icon" data-act="nav" data-id="${nav?.prev_id || ''}" ${nav?.prev_id ? '' : 'disabled'} title="پذیرش قبلی">‹</button><button class="btn icon" data-act="nav" data-id="${nav?.next_id || ''}" ${nav?.next_id ? '' : 'disabled'} title="پذیرش بعدی">›</button>
+      <button class="btn" data-act="preview">${icon('eye', 16)} پیش‌نمایش</button>
+      ${!locked && allTests.some(t => t.default_answer) ? `<button class="btn" data-act="defaults" title="خانه‌های خالی با جواب پیش‌فرض هر آزمایش پر شوند">جواب‌های پیش‌فرض</button>` : ''}
       ${!locked ? `<button class="btn" data-act="starAll" title="همه خانه‌های خالی ستاره (*) می‌شوند؛ بعد فقط نتایج لازم را وارد کنید">✱ ستاره همه</button><button class="btn ghost" data-act="unstar">پاک کردن ستاره‌ها</button><button class="btn primary" data-act="draft">ذخیره موقت</button><button class="btn success" data-act="complete">${icon('check', 16)} تکمیل نتایج</button>` : ''}
       ${o.status === 'completed' && can('approve') ? `<button class="btn success" data-act="approve">${icon('lock', 16)} تأیید نهایی</button>` : ''}
       ${locked && o.status !== 'cancelled' && can('approve') ? `<button class="btn" data-act="unapprove">${icon('unlock', 16)} لغو تأیید برای اصلاح</button>` : ''}</div></div>
+    ${info.length ? `<div class="labInfo">${info.map(([k, v]) => `<span>${k ? `<small class="muted">${k}:</small> ` : ''}${v}</span>`).join('')}</div>` : ''}
     ${locked ? '<div class="warnBox">این راپور تأیید شده و قفل است. برای اصلاح، ابتدا تأیید را لغو کنید.</div>' : '<div class="infoBox small">Enter = خانه بعدی · خانه‌های گزینه‌ای (مثل ادرار) را با <b>کد</b> (مثلاً 2) یا تایپ متن پر کنید · «*» = لازم نیست، در راپور چاپ نمی‌شود (با Enter بقیه خانه‌های خالی همان گروه هم * می‌شوند) · «ستاره همه» همه را * می‌کند تا فقط نتایج لازم را وارد کنید · خانه‌های خاکستری خودکار محاسبه می‌شوند.</div>'}
     ${groups.map(g => `<div class="resGroup"><div class="resGroupHead"><span>${esc(g.title)} <small class="muted">${esc(g.dept?.name || '')}</small></span>
       ${!locked && g.items.some(t => t.result_type !== 'numeric' && t.ref_text) ? `<button class="btn sm" data-act="normal" data-g="${g.key}">طبیعی (Normal)</button>` : ''}</div>
-      <table class="res" data-g="${g.key}"><thead><tr><th>Test</th><th>Result</th><th>Flag</th><th>Unit</th><th>Reference</th><th>Previous</th><th></th></tr></thead><tbody>
-      ${g.items.map(t => { const pr = data.prev.get(t.id); const r = data.results.get(t.id);
-        return `<tr data-row="${t.id}"><td class="nm">${esc(t.name)} <span class="codeTag small">${esc(t.code)}</span></td><td class="val">${inputFor(t)}</td>
+      <table class="res" data-g="${g.key}"><thead><tr><th>Test</th><th>Result</th><th>Flag</th><th>Unit</th><th>Reference</th>${Array.from({ length: nPrev }, (_, i) => `<th class="prevC">Prev ${i + 1}</th>`).join('')}<th></th></tr></thead><tbody>
+      ${g.items.map(t => { const pl = data.prevs.get(t.id) || []; const r = data.results.get(t.id); const kit = Catalog.kitById.get(kitOf(t));
+        const sub = [kit && `${esc(kit.name)}${kit.lot_no ? ' · Lot ' + esc(kit.lot_no) : ''}${kit.expiry && kit.expiry < isoDate() ? ' <b class="dangerText">منقضی</b>' : ''}`, t.sendout_lab && `ارسالی: ${esc(t.sendout_lab)}`].filter(Boolean).join(' · ');
+        return `<tr data-row="${t.id}"><td class="nm">${esc(t.name)} <span class="codeTag small">${esc(t.code)}</span>${sub ? `<div class="tiny muted">${sub}</div>` : ''}</td><td class="val">${inputFor(t)}</td>
         <td data-flag="${t.id}"></td><td class="small">${esc(t.unit || '')}</td><td class="small">${esc(refDisplay(t, rangeOf.get(t.id)))}</td>
-        <td class="prev">${pr ? `${esc(pr.value)} ${pr.flag ? `<span class="flag ${pr.flag}">${pr.flag}</span>` : ''} <small>${esc(fmtDate(pr.created_at))}</small>` : ''}</td>
-        <td>${!locked ? `<button class="btn ghost icon" data-act="comment" data-ctid="${t.id}" title="یادداشت">${icon('edit', 14)}</button>` : ''}<span class="small muted" data-cmt="${t.id}">${esc(r?.comment || '')}</span></td></tr>`; }).join('')}
+        ${Array.from({ length: nPrev }, (_, i) => { const pr = pl[i]; return `<td class="prev prevC">${pr ? `${esc(pr.value)} ${pr.flag ? `<span class="flag ${pr.flag}">${pr.flag}</span>` : ''}<div class="tiny">${esc(fmtDateNum(pr.created_at))}</div>` : ''}</td>`; }).join('')}
+        <td class="nowrap">${pl.length && t.result_type === 'numeric' ? `<button class="btn ghost icon" data-act="trend" data-trend="${t.id}" title="نمودار ترند نتایج">${icon('trend', 14)}</button>` : ''}
+        ${!locked ? `<button class="btn ghost icon" data-act="comment" data-ctid="${t.id}" title="یادداشت">${icon('edit', 14)}</button>` : ''}<span class="small muted" data-cmt="${t.id}">${esc(r?.comment || '')}</span></td></tr>`; }).join('')}
       </tbody></table></div>`).join('')}`;
 
   const comments = new Map([...data.results.values()].map(r => [r.test_id, r.comment || '']));
@@ -91,9 +115,12 @@ async function resultEntry(view, orderId) {
     for (const t of allTests) {
       const el = field(t.id); if (!el) continue;
       const f = computeFlag(t, el.value, rangeOf.get(t.id));
+      const al = alarmOf(t, el.value, rangeOf.get(t.id));
       const tr = el.closest('tr');
       tr.classList.toggle('abn', !!f); tr.classList.toggle('crit', f === 'HH' || f === 'LL');
-      $(`[data-flag="${t.id}"]`, view).innerHTML = f ? `<span class="flag ${f}" title="${FLAG_FA[f]}">${f}</span>` : '';
+      tr.classList.toggle('alarm', al === 'alarm'); tr.classList.toggle('impossible', al === 'impossible');
+      $(`[data-flag="${t.id}"]`, view).innerHTML = (f ? `<span class="flag ${f}" title="${FLAG_FA[f]}">${f}</span>` : '') +
+        (al === 'impossible' ? ' <span class="pill bad" title="خارج از محدوده ممکن — ذخیره نمی‌شود">ممکن نیست</span>' : al === 'alarm' ? ' <span class="pill warn" title="خارج از محدوده هشدار">⚠</span>' : '');
     }
     const diff = Catalog.byCode.get('DIFFT');
     if (diff && field(diff.id) && field(diff.id).value && Math.abs(Number(field(diff.id).value) - 100) > 1) field(diff.id).closest('tr').classList.add('abn');
@@ -158,7 +185,7 @@ async function resultEntry(view, orderId) {
   const collect = () => allTests.map(t => {
     const el = field(t.id); let v = el ? el.value.trim() : '';
     const rg = rangeOf.get(t.id);
-    return { test_id: t.id, value: v, num_value: t.result_type === 'numeric' && v !== '*' ? num(v) : null, flag: computeFlag(t, v, rg), ref_display: refDisplay(t, rg), unit: t.unit, comment: comments.get(t.id) || null };
+    return { test_id: t.id, value: v, num_value: t.result_type === 'numeric' && v !== '*' ? num(v) : null, flag: computeFlag(t, v, rg), ref_display: refDisplay(t, rg), unit: t.unit, comment: comments.get(t.id) || null, kit_id: kitOf(t) };
   });
   const save = async (status) => {
     recalc();
@@ -178,6 +205,9 @@ async function resultEntry(view, orderId) {
   };
   actions(view, {
     back: () => go('results'), preview: () => reportPreview(orderId),
+    nav: (el) => { if (el.dataset.id) go('results', { order: Number(el.dataset.id) }); },
+    defaults: () => { let n = 0; allTests.forEach(t => { const el = field(t.id); if (t.default_answer && el && !el.readOnly && !el.disabled && (!el.value.trim() || el.value.trim() === '*')) { el.value = t.default_answer; n++; } }); recalc(); toast(`${n} خانه با جواب پیش‌فرض پر شد`); },
+    trend: (el) => resultTrendDlg(p, Catalog.byId.get(Number(el.dataset.trend)), rangeOf.get(Number(el.dataset.trend))),
     draft: () => save('in_progress'), complete: () => save('completed'),
     approve: async () => { await approveOrder(orderId); go('results', { order: orderId }); },
     unapprove: async () => { await unapproveOrder(orderId); go('results', { order: orderId }); },
@@ -188,4 +218,15 @@ async function resultEntry(view, orderId) {
   });
   recalc();
   const first = inputs().find(x => !x.readOnly && !x.value && !x.disabled); first && first.focus();
+}
+
+// trend of one test for a patient (all previous results + chart)
+async function resultTrendDlg(p, t, range) {
+  const rows = await lab.all(`SELECT r.value, r.num_value, r.flag, o.created_at, o.order_no FROM results r JOIN orders o ON o.id=r.order_id
+    WHERE o.patient_id=? AND r.test_id=? AND r.value<>'*' AND o.status<>'cancelled' ORDER BY o.created_at`, [p.id, t.id]);
+  const pts = rows.map(r => ({ ...r, n: r.num_value ?? num(String(r.value).replace(/^[<>]=?\s*/, '')) })).filter(r => r.n !== null);
+  const m = modal({ title: `ترند ${esc(t.name)} — ${esc(p.full_name)}`, size: 'wide', body: `<div class="chartBox" style="height:280px"><canvas id="trC"></canvas></div>
+    <div class="tableWrap" style="max-height:220px;margin-top:10px"><table class="t"><thead><tr><th>تاریخ</th><th>پذیرش</th><th>نتیجه</th><th>Flag</th></tr></thead><tbody>
+    ${rows.slice().reverse().map(r => `<tr><td>${esc(fmtDateTime(r.created_at))}</td><td><span class="codeTag">${esc(r.order_no)}</span></td><td class="ltr"><b>${esc(r.value)}</b> ${esc(t.unit || '')}</td><td>${r.flag ? `<span class="flag ${r.flag}">${r.flag}</span>` : ''}</td></tr>`).join('')}</tbody></table></div>` });
+  trendChart($('#trC', m.el), pts.map(r => fmtDateNum(r.created_at)), pts.map(r => r.n), { label: t.code, low: range?.low ?? null, high: range?.high ?? null, unit: t.unit || '' });
 }

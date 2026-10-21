@@ -4,7 +4,9 @@
 Pages.reception = {
   async render(view, params = {}) {
     const doctors = await lab.all('SELECT * FROM doctors WHERE active=1 ORDER BY name');
-    const st = { patientId: null, sel: [], doctors, doctorId: null, birth: null };
+    const st = { patientId: null, sel: [], doctors, doctorId: null, birth: null, patient: null };
+    const rts = Catalog.recTypes.filter(r => r.active);
+    const reasons = String(App.settings.discount_reasons || '').split('\n').map(x => x.trim()).filter(Boolean);
     view.innerHTML = `
       <div class="pageHead"><div><h1>پذیرش مریض</h1><p>ثبت مریض، انتخاب آزمایش‌ها و دریافت پول — با <span class="kbd">Enter</span> به خانه بعدی بروید</p></div>
         <div class="toolbar"><button class="btn" data-act="reset">${icon('plus', 16)} فرم جدید</button></div></div>
@@ -21,10 +23,19 @@ Pages.reception = {
               <select id="f_csex" class="hidden" title="جنس طفل"><option value="M">پسر</option><option value="F">دختر</option></select></div></div>
             <div class="field c3"><span>سن <em>*</em></span><div class="inputGroup"><input type="number" min="0" id="f_ay" placeholder="سال" data-nav><input type="number" min="0" max="11" id="f_am" placeholder="ماه" data-nav><input type="number" min="0" max="31" id="f_ad" placeholder="روز" data-nav></div></div>
             <label class="field c2"><span>شماره تماس</span><input type="tel" id="f_phone" class="ltr" data-nav></label>
+            <label class="field c2"><span>نمبر تذکره</span><input id="f_idno" class="ltr" autocomplete="off" data-nav></label>
+            <label class="field c2"><span>شماره بیمه</span><input id="f_insno" class="ltr" autocomplete="off" data-nav></label>
             <div class="field c3"><span>داکتر معرف (کد یا نام)</span><div class="searchBox"><input id="f_docq" placeholder="— خودمراجعه —" autocomplete="off" data-nav><div class="dropdown hidden" id="docResults"></div></div></div>
             <label class="field c1"><span>اولویت</span><select id="f_pri" data-nav><option value="routine">عادی</option><option value="urgent">عاجل</option></select></label>
+            <label class="field c2"><span>نوع پذیرش</span><select id="f_rt" data-nav>${rts.length ? rts.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('') : '<option value="">عادی</option>'}</select></label>
+            <label class="field c2"><span>ناشتا</span><select id="f_fast" data-nav><option value="">—</option><option value="fast">ناشتا (Fast)</option><option value="nonfast">غیر ناشتا (Non Fast)</option></select></label>
+            <label class="field c2"><span>وضعیت نمونه</span><select id="f_sflag" data-nav><option value="">عادی</option><option value="hemolyzed">همولیز</option><option value="lipemic">لیپمیک</option><option value="icteric">ایکتریک</option><option value="clotted">لخته</option><option value="low">نمونه کم</option><option value="repeat">تکرار نمونه</option></select></label>
+            <label class="field c2"><span>تاریخ جواب</span><input type="date" id="f_ans" data-nav></label>
+            <label class="field c4"><span>Clinical Notes (تشخیص / علت درخواست)</span><input id="f_cn" class="ltr" style="text-align:left" data-nav></label>
+            <label class="check c2" id="f_pregBox" style="align-self:end;padding-bottom:8px"><input type="checkbox" id="f_preg"> حامله (Pregnant)</label>
             <label class="field c3"><span>آدرس</span><input id="f_addr" data-nav></label>
-            <label class="field c3"><span>یادداشت</span><input id="f_notes" placeholder="مثلاً: ناشتا، مصرف دارو…" data-nav></label>
+            <label class="field c3"><span>یادداشت</span><input id="f_notes" placeholder="مثلاً: مصرف دارو…" data-nav></label>
+            <div class="c6 hidden" id="recWarn"></div>
           </div>
         </div>
         <div class="card hidden" id="ptHistory"></div>
@@ -35,7 +46,9 @@ Pages.reception = {
           <div class="selList" id="selList" style="margin-top:10px"></div>
           <div class="totals">
             <div><span>مجموع</span><b class="num" id="tGross">0</b></div>
-            <div><span>تخفیف</span><div class="row" style="gap:6px"><input type="number" min="0" id="fDisc" value="0" style="width:110px;text-align:center"><select id="fDiscType" style="width:80px"><option value="amt">مبلغ</option><option value="pct">٪</option></select></div></div>
+            <div id="tOrgRow" class="hidden"><span>سهم مؤسسه / بیمه</span><b class="num" id="tOrg">0</b></div>
+            <div><span>تخفیف</span><div class="row" style="gap:6px"><input type="number" min="0" id="fDisc" value="0" style="width:110px;text-align:center"><select id="fDiscType" style="width:80px"><option value="amt">مبلغ</option><option value="pct">٪</option></select>
+              <select id="fDiscReason" class="hidden" style="width:150px" title="دلیل تخفیف"><option value="">— دلیل تخفیف —</option>${reasons.map(r => `<option>${esc(r)}</option>`).join('')}</select></div></div>
             <div><span>پرداخت فعلی</span><div class="row" style="gap:6px"><input type="number" min="0" id="fPaid" style="width:110px;text-align:center"><select id="fMethod" style="width:120px">${Object.entries(PAY_METHODS).map(([k, v]) => `<option value="${k}" ${App.settings.default_payment === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div></div>
             <div><span>مبلغ قابل پرداخت</span><b class="num" id="tNet">0</b></div>
           </div>
@@ -49,25 +62,54 @@ Pages.reception = {
       </div>`;
 
     const paidTouched = { v: false };
+    const curRt = () => Catalog.recTypeById.get(Number($('#f_rt', view).value)) || null;
     const net = () => {
-      const gross = st.sel.reduce((a, id) => a + Number(Catalog.byId.get(id)?.price || 0), 0);
+      const rt = curRt();
+      const pr = st.sel.map(id => recPrice(Catalog.byId.get(id), rt));
+      const gross = Math.round(pr.reduce((a, x) => a + x.price, 0) * 100) / 100, org = Math.round(pr.reduce((a, x) => a + x.org, 0) * 100) / 100;
+      const share = gross - org;
       let d = Number($('#fDisc', view).value || 0);
-      if ($('#fDiscType', view).value === 'pct') d = Math.round(gross * Math.min(100, d) / 100);
-      d = Math.min(gross, Math.max(0, d));
-      return { gross, disc: d, net: gross - d };
+      if ($('#fDiscType', view).value === 'pct') d = Math.round(share * Math.min(100, d) / 100);
+      d = Math.min(share, Math.max(0, d));
+      return { gross, org, disc: d, net: Math.round((share - d) * 100) / 100 };
     };
     const renderSel = () => {
       const box = $('#selList', view);
       box.innerHTML = st.sel.length ? st.sel.map(id => {
         const t = Catalog.byId.get(id);
         const n = t.is_panel ? Catalog.leaves(id).length : 0;
-        return `<div class="selRow"><span class="codeTag">${esc(t.num_code ?? t.code)}</span><span class="nm">${esc(t.name)}${n ? ` <small class="muted">(${n} items)</small>` : ''}</span><small class="muted">${esc(Catalog.deptName(t))}</small><b class="num">${money(t.price)}</b><button class="btn ghost icon dangerText" data-act="rm" data-id="${id}" title="حذف">${icon('x', 16)}</button></div>`;
+        const pr = recPrice(t, curRt());
+        return `<div class="selRow"><span class="codeTag">${esc(t.num_code ?? t.code)}</span><span class="nm">${esc(t.name)}${n ? ` <small class="muted">(${n} items)</small>` : ''}${t.sendout_lab ? ` <span class="pill violet" title="ارسالی">${esc(t.sendout_lab)}</span>` : ''}</span><small class="muted">${esc(Catalog.deptName(t))}</small><b class="num">${money(pr.price)}</b><button class="btn ghost icon dangerText" data-act="rm" data-id="${id}" title="حذف">${icon('x', 16)}</button></div>`;
       }).join('') : '<div class="empty">هنوز آزمایشی انتخاب نشده است</div>';
       const x = net();
       $('#tGross', view).textContent = money(x.gross);
+      $('#tOrgRow', view).classList.toggle('hidden', !x.org); $('#tOrg', view).textContent = money(x.org);
+      $('#fDiscReason', view).classList.toggle('hidden', !(x.disc > 0));
       $('#tNet', view).textContent = money(x.net) + ' ' + currency();
       if (!paidTouched.v) $('#fPaid', view).value = x.net;
+      if (!ansTouched) $('#f_ans', view).value = recAnswerDate(st.sel, $('#f_pri', view).value === 'urgent');
+      warnings();
     };
+    // ---- warnings: same test done recently, test only for the other sex, expired kit, duplicate tazkira, max tests ----
+    let ansTouched = false, dupId = null;
+    const warnings = debounce(async () => {
+      const box = $('#recWarn', view); if (!box) return;
+      const out = []; const sex = sexOf(); const rt = curRt();
+      const leaves = [...new Set(st.sel.flatMap(id => [id, ...Catalog.leaves(id).map(l => l.id)]))].map(id => Catalog.byId.get(id)).filter(Boolean);
+      leaves.filter(t => t.sex_only && t.sex_only !== sex).forEach(t => out.push(`«${esc(t.name)}» فقط برای ${t.sex_only === 'F' ? 'خانم‌ها' : 'آقایان'} است`));
+      const today = isoDate();
+      leaves.forEach(t => { const k = Catalog.kit(t); if (k && k.expiry && k.expiry < today) out.push(`کیت فعال «${esc(t.name)}» (${esc(k.name)} ${esc(k.lot_no || '')}) تاریخ آن گذشته است`); });
+      if (rt && rt.max_tests && st.sel.length > rt.max_tests) out.push(`برای «${esc(rt.name)}» حداکثر ${rt.max_tests} آزمایش مجاز است`);
+      const days = Number(App.settings.warn_repeat_days || 0);
+      if (st.patientId && days > 0 && st.sel.length) {
+        const rows = await lab.all(`SELECT oi.test_id, MAX(o.created_at) last FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.patient_id=? AND o.status<>'cancelled' AND date(o.created_at)>=date('now','localtime',?) AND oi.test_id IN (${st.sel.join(',')}) GROUP BY oi.test_id`, [st.patientId, `-${days} days`]);
+        rows.forEach(r => out.push(`«${esc(Catalog.byId.get(r.test_id)?.name || '')}» برای این مریض ${esc(fmtDate(r.last))} انجام شده است (تکرار آزمایش)`));
+      }
+      if (dupId) out.push(`نمبر تذکره قبلاً برای <b>${esc(dupId.full_name)}</b> ولد ${esc(dupId.father_name || '—')} (${esc(dupId.mrn)}) ثبت شده — <a href="#" data-act="pickPt" data-pid="${dupId.id}">انتخاب همان پرونده</a>`);
+      box.innerHTML = out.length ? `<div class="warnBox" style="margin:0">${out.map(x => '⚠ ' + x).join('<br>')}</div>` : '';
+      box.classList.toggle('hidden', !out.length);
+      if (dupId) $('#ptHistory', view)._rows = [...($('#ptHistory', view)._rows || []).filter(r => r.id !== dupId.id), dupId];
+    }, 250);
     const add = (id) => {
       const t = Catalog.byId.get(id); if (!t) return;
       if (st.sel.includes(id)) return toast('این آزمایش قبلاً اضافه شده است');
@@ -168,6 +210,7 @@ Pages.reception = {
       st.patientId = p ? p.id : null;
       $('#f_name', view).value = p?.full_name || ''; $('#f_father', view).value = p?.father_name || '';
       $('#f_phone', view).value = p?.phone || ''; $('#f_addr', view).value = p?.address || '';
+      $('#f_idno', view).value = p?.id_number || ''; $('#f_insno', view).value = p?.insurance_no || ''; dupId = null; st.patient = p || null;
       st.birth = p?.birth_date || null;
       const days = setAgeFromBirth(st.birth);
       setTypeFor(days, p?.sex || 'M');
@@ -175,6 +218,7 @@ Pages.reception = {
       $('#ptMode', view).textContent = p ? `مریض قبلی · ${p.mrn}` : 'مریض جدید';
       $('#ptSearch', view).value = '';
       showHistory(p).catch(errToast);
+      syncPreg(); warnings();
     };
     $('#ptSearch', view).addEventListener('input', ptSearch);
     $('#ptSearch', view).addEventListener('blur', () => setTimeout(() => $('#ptResults', view)?.classList.add('hidden'), 200));
@@ -206,6 +250,16 @@ Pages.reception = {
     $('#tSearch', view).addEventListener('blur', () => setTimeout(() => $('#tResults', view)?.classList.add('hidden'), 150));
     ['#fDisc', '#fDiscType'].forEach(s => $(s, view).addEventListener('input', renderSel));
     $('#fPaid', view).addEventListener('input', () => { paidTouched.v = true; });
+    $('#f_ans', view).addEventListener('input', () => { ansTouched = true; });
+    $('#f_pri', view).addEventListener('change', renderSel);
+    $('#f_rt', view).addEventListener('change', () => { const rt = curRt(); $('#fDisc', view).value = rt && rt.discount_pct ? rt.discount_pct : 0; $('#fDiscType', view).value = rt && rt.discount_pct ? 'pct' : 'amt'; if (rt?.discount_pct) $('#fDiscReason', view).value = ''; renderSel(); });
+    $('#f_idno', view).addEventListener('input', debounce(async () => {
+      const v = $('#f_idno', view).value.trim(); dupId = null;
+      if (v.length >= 3 && App.settings.warn_dup_id !== '0') dupId = await lab.get('SELECT * FROM patients WHERE id_number=? AND id<>? LIMIT 1', [v, st.patientId || 0]);
+      warnings();
+    }, 300));
+    const syncPreg = () => $('#f_pregBox', view).classList.toggle('hidden', sexOf() !== 'F' || $('#f_type', view).value === 'newborn');
+    ['#f_type', '#f_csex'].forEach(x => $(x, view).addEventListener('change', () => { syncPreg(); warnings(); }));
 
     // ---- Enter moves to the next field ----
     const navFields = () => $$('[data-nav]', view).filter(el => !el.disabled && el.offsetParent !== null);
@@ -238,14 +292,29 @@ Pages.reception = {
       const type = $('#f_type', view).value;
       if (type === 'newborn' && days > NEWBORN_MAX_DAYS && !(await confirmDlg('سن وارد شده بیشتر از ۳۱ روز است ولی «نوزاد» انتخاب شده. ادامه می‌دهید؟'))) return;
       const x = net();
+      const rt = curRt();
+      if (x.disc > 0 && App.settings.discount_reason_required === '1' && !$('#fDiscReason', view).value && !(rt && rt.discount_pct)) { $('#fDiscReason', view).focus(); return toast('دلیل تخفیف را انتخاب کنید', 'bad'); }
+      if (rt) {
+        let req = []; try { req = JSON.parse(rt.required_fields || '[]'); } catch (_) { req = []; }
+        const val = { id_number: $('#f_idno', view).value, phone: $('#f_phone', view).value, birth_date: 'x', father_name: $('#f_father', view).value, address: $('#f_addr', view).value, insurance_no: $('#f_insno', view).value };
+        const names = { id_number: 'نمبر تذکره', phone: 'شماره تماس', father_name: 'نام پدر', address: 'آدرس', insurance_no: 'شماره بیمه' };
+        const miss = req.filter(k => !String(val[k] || '').trim());
+        if (miss.length) return toast(`برای «${rt.name}» این معلومات لازم است: ${miss.map(k => names[k] || k).join('، ')}`, 'bad');
+      }
+      const warnTxt = $('#recWarn', view).textContent.trim();
+      if (warnTxt && !(await confirmDlg(`${esc(warnTxt).replace(/⚠/g, '<br>⚠')}<br><br>با وجود این هشدارها ثبت شود؟`))) return;
       const paid = Math.min(x.net, Math.max(0, Number($('#fPaid', view).value || 0)));
       // keep the stored birth date if the age did not change (avoids drifting)
       const birth = st.birth && ageDaysFromBirth(st.birth) !== null && Math.abs(ageDaysFromBirth(st.birth) - days) < 31 ? st.birth : birthFromAge($('#f_ay', view).value, $('#f_am', view).value, $('#f_ad', view).value);
       const res = await lab.createOrder({
         patient_id: st.patientId,
-        patient: { full_name: name, father_name: $('#f_father', view).value.trim(), sex: sexOf(), birth_date: birth, phone: $('#f_phone', view).value.trim(), address: $('#f_addr', view).value.trim() },
+        patient: { full_name: name, father_name: $('#f_father', view).value.trim(), sex: sexOf(), birth_date: birth, phone: $('#f_phone', view).value.trim(), address: $('#f_addr', view).value.trim(), id_number: $('#f_idno', view).value.trim(), insurance_no: $('#f_insno', view).value.trim() },
         doctor_id: st.doctorId, age_days: ageDaysFromBirth(birth), patient_type: type, priority: $('#f_pri', view).value,
-        notes: $('#f_notes', view).value.trim(), test_ids: st.sel, discount: x.disc, payment: { amount: paid, method: $('#fMethod', view).value }
+        notes: $('#f_notes', view).value.trim(), test_ids: st.sel, discount: x.disc, payment: { amount: paid, method: $('#fMethod', view).value },
+        reception_type_id: rt ? rt.id : null, fasting: $('#f_fast', view).value || null, clinical_notes: $('#f_cn', view).value.trim() || null,
+        pregnant: sexOf() === 'F' && $('#f_preg', view).checked, sample_flag: $('#f_sflag', view).value || null, answer_date: $('#f_ans', view).value || null,
+        discount_reason: x.disc > 0 ? ($('#fDiscReason', view).value || (rt && rt.discount_pct ? rt.name : null)) : null,
+        sendout: st.sel.some(id => [Catalog.byId.get(id), ...Catalog.leaves(id)].some(t => t?.sendout_lab))
       });
       toast(`پذیرش ${res.order_no} ثبت شد`, 'good');
       const data = await loadOrderFull(res.id);
@@ -254,7 +323,11 @@ Pages.reception = {
       afterSaveDialog(res, data);
       reset();
     };
-    const reset = () => { fillPatient(null); pickDoctor(null); st.sel = []; paidTouched.v = false; $('#fDisc', view).value = 0; $('#f_notes', view).value = ''; $('#f_pri', view).value = 'routine'; renderSel(); $('#f_name', view).focus(); };
+    const reset = () => {
+      fillPatient(null); pickDoctor(null); st.sel = []; paidTouched.v = false; ansTouched = false; $('#fDisc', view).value = 0; $('#fDiscType', view).value = 'amt'; $('#fDiscReason', view).value = ''; $('#f_notes', view).value = ''; $('#f_pri', view).value = 'routine';
+      ['#f_fast', '#f_sflag', '#f_cn'].forEach(x => { $(x, view).value = ''; }); $('#f_preg', view).checked = false; if (rts[0]) $('#f_rt', view).value = rts[0].id;
+      renderSel(); $('#f_name', view).focus();
+    };
 
     actions(view, {
       rm: (el) => { st.sel = st.sel.filter(x => x !== Number(el.dataset.id)); renderSel(); },
@@ -267,7 +340,7 @@ Pages.reception = {
     view.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save('receipt').catch(errToast); } });
 
     if (params.patient) { const p = await lab.get('SELECT * FROM patients WHERE id=?', [params.patient]); if (p) fillPatient(p); }
-    renderSel(); syncType();
+    renderSel(); syncType(); syncPreg();
     setTimeout(() => $('#f_name', view).focus(), 50);
   }
 };
@@ -315,4 +388,25 @@ function guessSex(name) {
   if (F.includes(first)) return 'F';
   if (M.includes(first) || first.startsWith('عبد') || first.endsWith('الله')) return 'M';
   return null;
+}
+
+// price of a test for a reception type (same rules as the database layer)
+function recPrice(t, rt) {
+  if (!t) return { price: 0, org: 0 };
+  let base = Number(t.price || 0);
+  if (rt && rt.price_basis === 'insurance' && t.price_ins !== null && t.price_ins !== undefined && t.price_ins !== '') base = Number(t.price_ins);
+  if (rt && Number(rt.increase_pct)) base = base * (1 + Number(rt.increase_pct) / 100);
+  base = Math.round(base * 100) / 100;
+  return { price: base, org: rt ? Math.max(0, Math.round(base * (100 - Number(rt.patient_pct ?? 100))) / 100) : 0 };
+}
+// answer date: longest turnaround of the tests, moved to a weekday on which every test is done
+function recAnswerDate(ids, urgent) {
+  const d = new Date();
+  if (urgent) return isoDate(d);
+  const ts = [...new Set(ids)].map(id => Catalog.byId.get(id)).filter(Boolean);
+  const days = Math.max(Number(App.settings.answer_days || 1) || 0, ...ts.map(t => t.tat_days !== null && t.tat_days !== undefined ? Number(t.tat_days) : Math.ceil(Number(t.tat_hours || 0) / 24)));
+  d.setDate(d.getDate() + Math.max(0, Math.ceil(days)));
+  const wd = ts.map(t => String(t.weekdays || '')).filter(Boolean);
+  for (let k = 0; k < 7 && wd.length && !wd.every(w => w.includes(String(d.getDay()))); k++) d.setDate(d.getDate() + 1);
+  return isoDate(d);
 }

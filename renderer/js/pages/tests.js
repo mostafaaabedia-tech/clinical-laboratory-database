@@ -91,6 +91,7 @@ Pages.tests = {
 };
 
 // -------------------- editor --------------------
+const RANGE_HEAD = '<tr><th>جنس</th><th>از سن</th><th>تا سن (کمتر از)</th><th>نارمل Low</th><th>نارمل High</th><th>هشدار پایین</th><th>هشدار بالا</th><th>بحرانی پایین</th><th>بحرانی بالا</th><th>متن چاپی</th><th></th></tr>';
 async function testEditor(id, isPanelNew, duplicate = false) {
   const t0 = id ? Catalog.byId.get(id) : null;
   const t = t0 ? { ...t0 } : { code: '', name: '', name_fa: '', department_id: Catalog.depts[0]?.id, sample_type_id: Catalog.samples[0]?.id, is_panel: isPanelNew ? 1 : 0, orderable: 1, result_type: 'numeric', options: null, unit: '', decimals: null, ref_low: null, ref_high: null, ref_text: '', critical_low: null, critical_high: null, formula: '', method: '', price: 0, cost: 0, tat_hours: 24, active: 1, notes: '' };
@@ -102,8 +103,12 @@ async function testEditor(id, isPanelNew, duplicate = false) {
   let cons = id ? await lab.all('SELECT item_id, qty_per_test FROM test_consumables WHERE test_id=?', [id]) : [];
   const editing = id && !duplicate;
   const opt = (v, sel) => `<option value="${v}" ${String(v) === String(sel) ? 'selected' : ''}>`;
-  const m = modal({ title: `${editing ? 'ویرایش' : 'تعریف'} ${isPanel ? 'پنل / پروفایل' : 'آزمایش'} ${editing ? '— ' + esc(t.code) : ''}`, size: 'wide', body: `
-    <div class="tabs"><button class="on" data-tab="g">مشخصات</button>${isPanel ? '<button data-tab="c">اجزای پنل</button>' : '<button data-tab="r">محدوده‌های مرجع</button>'}<button data-tab="i">مواد مصرفی</button></div>
+  let kits = editing ? await lab.all('SELECT * FROM kits WHERE test_id=? ORDER BY id', [id]) : [];
+  let activeKit = editing ? (t.active_kit_id || null) : null, kitSel = activeKit || kits[0]?.id || null;
+  const wdSet = new Set(String(t.weekdays || '').split('').filter(Boolean));
+  const ready = String(t.ready_answers || '');
+  const m = modal({ title: `${editing ? 'ویرایش' : 'تعریف'} ${isPanel ? 'پنل / پروفایل' : 'آزمایش'} ${editing ? '— ' + esc(t.code) : ''}`, size: 'xwide', body: `
+    <div class="tabs"><button class="on" data-tab="g">مشخصات</button>${isPanel ? '<button data-tab="c">اجزای پنل</button>' : '<button data-tab="r">محدوده‌های مرجع</button><button data-tab="k">کیت‌ها و محدوده هشدار / بحران</button><button data-tab="a">جواب‌های آماده</button>'}<button data-tab="m">نمونه، ارسال، نرخ و روزها</button><button data-tab="i">مواد مصرفی</button></div>
     <div data-pane="g"><div class="formGrid">
       <label class="field"><span>کد عددی (پذیرش)</span><input name="num_code" type="number" value="${editing || duplicate ? (duplicate ? Catalog.nextNumCode(t.department_id) : t.num_code ?? '') : Catalog.nextNumCode(t.department_id)}" class="ltr"></label>
       <label class="field"><span>کد انگلیسی <em>*</em></span><input name="code" value="${esc(t.code)}" class="ltr"></label>
@@ -136,32 +141,79 @@ async function testEditor(id, isPanelNew, duplicate = false) {
       <label class="check"><input type="checkbox" name="active" ${t.active ? 'checked' : ''}> فعال</label>
     </div></div>
     <div data-pane="r" class="hidden"><p class="small muted">محدوده‌ها بر اساس جنس و سن انتخاب می‌شوند. اگر هیچ‌کدام صدق نکند، Low/High صفحه مشخصات استفاده می‌شود.</p>
-      <div class="tableWrap"><table class="t"><thead><tr><th>جنس</th><th>از سن</th><th>تا سن (کمتر از)</th><th>Low</th><th>High</th><th>متن چاپی</th><th></th></tr></thead><tbody id="te_ranges"></tbody></table></div>
-      <button class="btn sm" style="margin-top:8px" data-x="addRange">${icon('plus', 14)} افزودن محدوده</button></div>
+      <div class="tableWrap"><table class="t rangeT"><thead>${RANGE_HEAD}</thead><tbody id="te_ranges"></tbody></table></div>
+      <div class="row" style="margin-top:8px"><button class="btn sm" data-x="addRange">${icon('plus', 14)} افزودن محدوده</button>${editing ? `<button class="btn sm" data-x="applyR" title="فلگ و محدوده نتایج ثبت‌شده در یک بازه تاریخ دوباره حساب شود">${icon('refresh', 14)} اعمال محدوده‌ها روی نتایج یک بازه تاریخ</button>` : ''}</div>
+      <p class="small muted">«هشدار» = نتیجه با رنگ زرد علامت می‌خورد · «بحرانی» = HH / LL و پیام فوری · خالی بگذارید تا از مقدار عمومی (صفحه مشخصات) استفاده شود.</p></div>
+    <div data-pane="k" class="hidden">${editing ? `<p class="small muted">برای هر برند / Lot کیت، محدوده نارمل، هشدار، بحرانی جداگانه تعریف کنید. نتایج با «کیت فعال» ثبت می‌شوند و کیت هر نتیجه ذخیره می‌ماند.</p>
+      <div class="tableWrap"><table class="t"><thead><tr><th>فعال</th><th>شرح کیت</th><th>شرکت</th><th>Lot No</th><th>تاریخ انقضا</th><th>Method</th><th class="c">محدوده‌ها</th><th></th></tr></thead><tbody id="te_kits"></tbody></table></div>
+      <div class="row" style="margin-top:8px"><button class="btn sm primary" data-x="newKit">${icon('plus', 14)} کیت جدید</button></div>
+      <div id="te_kitBox" style="margin-top:14px"><h3 style="font-size:14px;margin:0 0 8px" id="te_kitTitle"></h3>
+        <div class="tableWrap"><table class="t rangeT"><thead>${RANGE_HEAD}</thead><tbody id="te_kranges"></tbody></table></div>
+        <div class="row" style="margin-top:8px"><button class="btn sm" data-x="addRange" data-kit="1">${icon('plus', 14)} افزودن محدوده برای این کیت</button><button class="btn sm" data-x="applyR">${icon('refresh', 14)} اعمال روی نتایج یک بازه تاریخ</button></div></div>` : '<div class="empty">ابتدا آزمایش را ذخیره کنید، بعد کیت‌ها را تعریف کنید.</div>'}</div>
+    <div data-pane="a" class="hidden"><div class="formGrid">
+      <label class="field span2"><span>جواب پیش‌فرض (با دکمه «جواب‌های پیش‌فرض» در ثبت نتایج پر می‌شود)</span><input name="default_answer" value="${esc(t.default_answer || '')}" class="ltr" style="text-align:left"></label>
+      <label class="field"><span>محدوده ممکن — حداقل</span><input type="number" step="any" name="possible_low" value="${t.possible_low ?? ''}"></label>
+      <label class="field"><span>محدوده ممکن — حداکثر</span><input type="number" step="any" name="possible_high" value="${t.possible_high ?? ''}"></label>
+      <label class="field full"><span>جواب‌های آماده — هر خط یک جواب (در ثبت نتیجه با تایپ چند حرف پیشنهاد می‌شوند)</span><textarea name="ready_answers" rows="6" class="ltr" style="text-align:left">${esc(ready)}</textarea></label>
+      <label class="check"><input type="checkbox" name="numeric_only" ${t.numeric_only ? 'checked' : ''}> فقط عدد قبول شود (متن رد شود)</label></div>
+      <p class="small muted">نتیجه خارج از «محدوده ممکن» (مثلاً قند ۲۰۰۰) ذخیره نمی‌شود — برای جلوگیری از اشتباه تایپ.</p></div>
     <div data-pane="c" class="hidden"><div class="searchBox"><input id="te_cq" class="ltr" style="text-align:left" placeholder="افزودن پارامتر/آزمایش به پنل…" autocomplete="off"><div class="dropdown hidden" id="te_cdd"></div></div>
       <div class="selList" id="te_comps" style="margin-top:10px"></div>
       <p class="small muted">اگر پارامتر جدید لازم دارید، ابتدا آن را به‌عنوان «آزمایش جدید» (غیرقابل فروش جداگانه) تعریف کنید.</p></div>
+    <div data-pane="m" class="hidden"><div class="formGrid">
+      <label class="field span2"><span>نام در راپور (اگر با نام آزمایش فرق دارد)</span><input name="report_name" value="${esc(t.report_name || '')}" class="ltr" style="text-align:left"></label>
+      <label class="field span2"><span>شرح / توضیح آزمایش</span><input name="description" value="${esc(t.description || '')}"></label>
+      <label class="field"><span>نوع لوله / ظرف</span><input name="tube" value="${esc(t.tube || '')}" placeholder="EDTA (بنفش)، Plain (قرمز)…"></label>
+      <label class="field"><span>مقدار نمونه</span><input name="sample_amount" value="${esc(t.sample_amount || '')}" placeholder="2 ml"></label>
+      <label class="field"><span>LOINC</span><input name="loinc" value="${esc(t.loinc || '')}" class="ltr"></label>
+      <label class="field"><span>کد دستگاه</span><input name="machine_code" value="${esc(t.machine_code || '')}" class="ltr"></label>
+      <label class="field"><span>نرخ بیمه (${esc(currency())})</span><input type="number" min="0" step="any" name="price_ins" value="${t.price_ins ?? ''}" placeholder="خالی = نرخ آزاد"></label>
+      <label class="field"><span>زمان جوابدهی (روز)</span><input type="number" min="0" name="tat_days" value="${t.tat_days ?? ''}" placeholder="خالی = از ساعت"></label>
+      <label class="field"><span>فقط برای جنس</span><select name="sex_only"><option value="">هر دو</option><option value="M" ${t.sex_only === 'M' ? 'selected' : ''}>فقط مرد</option><option value="F" ${t.sex_only === 'F' ? 'selected' : ''}>فقط زن</option></select></label>
+      <label class="field"><span>لابراتوار ارسالی (Send-out)</span><input name="sendout_lab" value="${esc(t.sendout_lab || '')}" placeholder="خالی = در همین لابراتوار"></label>
+      <label class="field"><span>هزینه ارسال</span><input type="number" min="0" step="any" name="sendout_cost" value="${t.sendout_cost ?? ''}"></label>
+      <div class="field full"><span>روزهای انجام آزمایش (هیچ‌کدام = همه روزها) — تاریخ جواب به اولین روز انجام منتقل می‌شود</span><div class="chips" id="te_wd">${[[6, 'شنبه'], [0, 'یکشنبه'], [1, 'دوشنبه'], [2, 'سه‌شنبه'], [3, 'چهارشنبه'], [4, 'پنجشنبه'], [5, 'جمعه']].map(([d, n]) => `<button type="button" class="chip ${wdSet.has(String(d)) ? 'on' : ''}" data-wd="${d}">${n}</button>`).join('')}</div></div>
+      ${isPanel ? '' : `<label class="check full"><input type="checkbox" name="side_column" ${t.side_column ? 'checked' : ''}> در راپور در ستون کناری چاپ شود (مثل Differential در CBC)</label>`}</div></div>
     <div data-pane="i" class="hidden"><p class="small muted">با تکمیل نتایج هر پذیرش، این مواد خودکار از موجودی کم می‌شوند.</p>
       <div class="tableWrap"><table class="t"><thead><tr><th>قلم موجودی</th><th>مقدار برای هر آزمایش</th><th></th></tr></thead><tbody id="te_cons"></tbody></table></div>
       ${items.length ? `<button class="btn sm" style="margin-top:8px" data-x="addCons">${icon('plus', 14)} افزودن ماده مصرفی</button>` : '<div class="empty">ابتدا در بخش موجودی قلم تعریف کنید.</div>'}</div>`,
     foot: `<button class="btn primary" data-x="save">${icon('check', 16)} ذخیره</button>${editing ? `<button class="btn ghost dangerText" data-x="del">${icon('trash', 16)} حذف</button><button class="btn ghost" data-x="stats">${icon('chart', 16)} آمار فروش</button>` : ''}` });
 
   const ageUnit = (dd) => dd === null || dd === undefined ? ['', 'y'] : dd % 365 === 0 || dd >= 730 ? [+(dd / 365.25).toFixed(1), 'y'] : dd >= 60 ? [Math.round(dd / 30.44), 'm'] : [dd, 'd'];
+  const rangeRow = (r, i) => { const [a1, u1] = ageUnit(r.age_min_days), [a2, u2] = ageUnit(r.age_max_days); const uSel = (u) => ['d', 'm', 'y'].map(x => `<option ${x === u ? 'selected' : ''} value="${x}">${{ d: 'روز', m: 'ماه', y: 'سال' }[x]}</option>`).join('');
+    const nIn = (k) => `<td><input data-k="${k}" type="number" step="any" value="${r[k] ?? ''}" style="width:72px"></td>`;
+    return `<tr data-i="${i}"><td><select data-k="sex" style="width:72px">${[['A', 'همه'], ['M', 'مرد'], ['F', 'زن']].map(([k, v]) => `<option value="${k}" ${r.sex === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
+      <td><div class="inputGroup"><input data-k="a1" type="number" value="${a1}" style="width:58px"><select data-k="u1" style="width:64px">${uSel(u1)}</select></div></td>
+      <td><div class="inputGroup"><input data-k="a2" type="number" value="${a2}" style="width:58px"><select data-k="u2" style="width:64px">${uSel(u2)}</select></div></td>
+      ${nIn('low')}${nIn('high')}${nIn('alarm_low')}${nIn('alarm_high')}${nIn('crit_low')}${nIn('crit_high')}
+      <td><input data-k="text" value="${esc(r.text || '')}" class="ltr" style="width:120px"></td><td><button class="btn ghost icon dangerText" data-x="rmRange" data-i="${i}">${icon('x', 14)}</button></td></tr>`; };
+  const kitName = (k) => k ? `${k.name}${k.lot_no ? ' · Lot ' + k.lot_no : ''}` : '';
+  const drawKits = () => {
+    const body = $('#te_kits', m.el); if (!body) return;
+    const today = isoDate();
+    body.innerHTML = `<tr><td><input type="radio" name="te_kitActive" value="" ${!activeKit ? 'checked' : ''}></td><td colspan="7" class="muted">بدون کیت — محدوده‌های عمومی</td></tr>` + kits.map(k => `<tr class="clickable ${k.id === kitSel ? 'selRowOn' : ''}" data-kit="${k.id}" style="${k.active ? '' : 'opacity:.5'}"><td><input type="radio" name="te_kitActive" value="${k.id}" ${k.id === activeKit ? 'checked' : ''}></td>
+      <td><b>${esc(k.name)}</b></td><td class="small">${esc(k.company || '')}</td><td class="ltr">${esc(k.lot_no || '')}</td><td>${k.expiry ? `${esc(fmtDate(k.expiry))}${k.expiry < today ? ' <span class="pill bad">منقضی</span>' : ''}` : ''}</td><td class="small ltr">${esc(k.method || '')}</td>
+      <td class="c">${ranges.filter(r => r.kit_id === k.id).length}</td><td class="nowrap"><button class="btn ghost icon" data-x="editKit" data-kid="${k.id}">${icon('edit', 14)}</button><button class="btn ghost icon dangerText" data-x="delKit" data-kid="${k.id}">${icon('trash', 14)}</button></td></tr>`).join('');
+    const k = kits.find(x => x.id === kitSel);
+    $('#te_kitBox', m.el).classList.toggle('hidden', !k);
+    if (k) $('#te_kitTitle', m.el).textContent = `محدوده‌های کیت: ${kitName(k)}`;
+  };
   const drawRanges = () => {
-    const body = $('#te_ranges', m.el); if (!body) return;
-    body.innerHTML = ranges.map((r, i) => { const [a1, u1] = ageUnit(r.age_min_days), [a2, u2] = ageUnit(r.age_max_days); const uSel = (u) => ['d', 'm', 'y'].map(x => `<option ${x === u ? 'selected' : ''} value="${x}">${{ d: 'روز', m: 'ماه', y: 'سال' }[x]}</option>`).join('');
-      return `<tr data-i="${i}"><td><select data-k="sex" style="width:80px">${[['A', 'همه'], ['M', 'مرد'], ['F', 'زن']].map(([k, v]) => `<option value="${k}" ${r.sex === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-        <td><div class="inputGroup"><input data-k="a1" type="number" value="${a1}" style="width:70px"><select data-k="u1" style="width:70px">${uSel(u1)}</select></div></td>
-        <td><div class="inputGroup"><input data-k="a2" type="number" value="${a2}" style="width:70px"><select data-k="u2" style="width:70px">${uSel(u2)}</select></div></td>
-        <td><input data-k="low" type="number" step="any" value="${r.low ?? ''}" style="width:80px"></td><td><input data-k="high" type="number" step="any" value="${r.high ?? ''}" style="width:80px"></td>
-        <td><input data-k="text" value="${esc(r.text || '')}" class="ltr"></td><td><button class="btn ghost icon dangerText" data-x="rmRange" data-i="${i}">${icon('x', 14)}</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">محدوده خاصی تعریف نشده</td></tr>';
+    for (const [sel, kid] of [['#te_ranges', null], ['#te_kranges', kitSel]]) {
+      const body = $(sel, m.el); if (!body) continue;
+      if (sel === '#te_kranges' && !kid) { body.innerHTML = ''; continue; }
+      const list = ranges.map((r, i) => [r, i]).filter(([r]) => (r.kit_id || null) === (kid || null));
+      body.innerHTML = list.map(([r, i]) => rangeRow(r, i)).join('') || '<tr><td colspan="12" class="empty">محدوده خاصی تعریف نشده</td></tr>';
+    }
+    drawKits();
   };
   const readRanges = () => {
-    $$('#te_ranges tr[data-i]', m.el).forEach(tr => {
+    $$('#te_ranges tr[data-i], #te_kranges tr[data-i]', m.el).forEach(tr => {
       const r = ranges[Number(tr.dataset.i)]; const g = k => $(`[data-k="${k}"]`, tr).value;
       const toDays = (v, u) => v === '' ? null : Math.round(Number(v) * (u === 'y' ? 365.25 : u === 'm' ? 30.44 : 1));
       r.sex = g('sex'); r.age_min_days = toDays(g('a1'), g('u1')); r.age_max_days = toDays(g('a2'), g('u2'));
-      r.low = num(g('low')); r.high = num(g('high')); r.text = g('text').trim() || null;
+      for (const k of ['low', 'high', 'alarm_low', 'alarm_high', 'crit_low', 'crit_high']) r[k] = num(g(k));
+      r.text = g('text').trim() || null;
     });
   };
   const drawComps = () => {
@@ -181,7 +233,7 @@ async function testEditor(id, isPanelNew, duplicate = false) {
   const CAT_AGE = { newborn: ['M', 10], child: ['M', 5 * 365], male: ['M', 30 * 365], female: ['F', 30 * 365] };
   let gridDirty = false;
   const localRange = (sex, age) => {
-    const rs = ranges.filter(r => (r.sex === 'A' || r.sex === sex) && (r.age_min_days === null || age >= r.age_min_days) && (r.age_max_days === null || age < r.age_max_days));
+    const rs = ranges.filter(r => !r.kit_id && (r.sex === 'A' || r.sex === sex) && (r.age_min_days === null || age >= r.age_min_days) && (r.age_max_days === null || age < r.age_max_days));
     rs.sort((a, b) => (b.sex !== 'A') - (a.sex !== 'A') || ((a.age_max_days ?? 1e7) - (a.age_min_days ?? 0)) - ((b.age_max_days ?? 1e7) - (b.age_min_days ?? 0)));
     if (rs[0]) return rs[0];
     const g = (n) => $(`[name="${n}"]`, m.el)?.value;
@@ -200,7 +252,8 @@ async function testEditor(id, isPanelNew, duplicate = false) {
       const low = num($('[data-gk="low"]', tr).value), high = num($('[data-gk="high"]', tr).value), text = $('[data-gk="text"]', tr).value.trim() || null;
       if (low === null && high === null && !text) return;
       const [sex, a1, a2] = CAT_DEF[tr.dataset.cat];
-      out.push({ sex, age_min_days: a1, age_max_days: a2, low, high, text });
+      const old = ranges.find(r => !r.kit_id && r.sex === sex && r.age_min_days === a1 && r.age_max_days === a2) || {};
+      out.push({ ...old, kit_id: null, sex, age_min_days: a1, age_max_days: a2, low, high, text });
     });
     return out;
   };
@@ -213,7 +266,7 @@ async function testEditor(id, isPanelNew, duplicate = false) {
   }
 
   $$('.tabs button', m.el).forEach(b => b.onclick = () => {
-    if (b.dataset.tab === 'r' && gridDirty) { ranges = rangesFromGrid(); drawRanges(); gridDirty = false; }
+    if ((b.dataset.tab === 'r' || b.dataset.tab === 'k') && gridDirty) { ranges = [...ranges.filter(r => r.kit_id), ...rangesFromGrid()]; drawRanges(); gridDirty = false; }
     if (b.dataset.tab === 'g' && $('.rangeGrid', m.el)) { readRanges(); fillGrid(); }
     $$('.tabs button', m.el).forEach(x => x.classList.toggle('on', x === b)); $$('[data-pane]', m.el).forEach(p => p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab)); });
   const cq = $('#te_cq', m.el);
@@ -228,7 +281,33 @@ async function testEditor(id, isPanelNew, duplicate = false) {
   m.el.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-x]'); if (!b) return; const x = b.dataset.x, i = Number(b.dataset.i);
     try {
-      if (x === 'addRange') { readRanges(); ranges.push({ sex: 'A', age_min_days: null, age_max_days: null, low: null, high: null, text: null }); drawRanges(); }
+      if (x === 'addRange') { readRanges(); ranges.push({ kit_id: b.dataset.kit ? kitSel : null, sex: 'A', age_min_days: null, age_max_days: null, low: null, high: null, text: null }); drawRanges(); }
+      if (x === 'newKit' || x === 'editKit') {
+        readRanges();
+        const k0 = x === 'editKit' ? kits.find(k => k.id === Number(b.dataset.kid)) : null;
+        const kv = await kitDialog(k0, t.method);
+        if (!kv) return;
+        if (k0) { await lab.run('UPDATE kits SET name=?, company=?, lot_no=?, expiry=?, method=?, active=? WHERE id=?', [kv.name, kv.company, kv.lot_no, kv.expiry, kv.method, kv.active, k0.id]); }
+        else {
+          const newId = (await lab.run('INSERT INTO kits(test_id, name, company, lot_no, expiry, method, active) VALUES(?,?,?,?,?,?,?)', [id, kv.name, kv.company, kv.lot_no, kv.expiry, kv.method, kv.active])).lastId;
+          // start the new kit with a copy of the general ranges (or of the Low / High / critical on the first tab)
+          if (gridDirty) { ranges = [...ranges.filter(r => r.kit_id), ...rangesFromGrid()]; gridDirty = false; }
+          let base = ranges.filter(r => !r.kit_id);
+          if (!base.length) { const g = (n) => $(`[name="${n}"]`, m.el)?.value; base = [{ sex: 'A', age_min_days: null, age_max_days: null, low: num(g('ref_low')), high: num(g('ref_high')), text: null, crit_low: num(g('critical_low')), crit_high: num(g('critical_high')) }]; }
+          base.forEach(r => ranges.push({ ...r, id: undefined, kit_id: newId }));
+          kitSel = newId; if (!activeKit) activeKit = newId;
+        }
+        kits = await lab.all('SELECT * FROM kits WHERE test_id=? ORDER BY id', [id]); drawRanges();
+        toast('کیت ذخیره شد — محدوده‌ها را بررسی کنید و «ذخیره» را بزنید', 'good');
+      }
+      if (x === 'delKit') {
+        const kid = Number(b.dataset.kid); const k = kits.find(z => z.id === kid);
+        const used = await lab.get('SELECT COUNT(*) c FROM results WHERE kit_id=?', [kid]);
+        if (used.c) { if (!(await confirmDlg(`با کیت «${esc(k.name)}» ${used.c} نتیجه ثبت شده؛ حذف نمی‌شود. غیرفعال شود؟`))) return; await lab.run('UPDATE kits SET active=0 WHERE id=?', [kid]); }
+        else { if (!(await confirmDlg(`کیت «${esc(k.name)}» و محدوده‌هایش حذف شود؟`, { danger: true }))) return; readRanges(); await lab.tx([['DELETE FROM reference_ranges WHERE kit_id=?', [kid]], ['DELETE FROM kits WHERE id=?', [kid]]]); ranges = ranges.filter(r => r.kit_id !== kid); if (activeKit === kid) activeKit = null; if (kitSel === kid) kitSel = null; }
+        kits = await lab.all('SELECT * FROM kits WHERE test_id=? ORDER BY id', [id]); drawRanges();
+      }
+      if (x === 'applyR') { await save(() => applyRangesDlg(id)); return; }
       if (x === 'rmRange') { readRanges(); ranges.splice(i, 1); drawRanges(); }
       if (x === 'rmComp') { comps.splice(i, 1); drawComps(); }
       if (x === 'up' && i > 0) { [comps[i - 1], comps[i]] = [comps[i], comps[i - 1]]; drawComps(); }
@@ -255,12 +334,19 @@ async function testEditor(id, isPanelNew, duplicate = false) {
       if (x === 'save') await save();
     } catch (err) { errToast(err); }
   });
-  const done = async (msg) => { toast(msg, 'good'); m.close(); await Catalog.load(); if (App.page === 'tests') go('tests'); };
+  const done = async (msg, then) => { toast(msg, 'good'); m.close(); await Catalog.load(); if (App.page === 'tests') await go('tests'); if (then) then(); };
+  // kits table: pick a kit to edit its ranges; radio = active kit
+  m.el.addEventListener('change', (e) => { if (e.target.name === 'te_kitActive') activeKit = Number(e.target.value) || null; });
+  m.el.addEventListener('click', (e) => {
+    const tr = e.target.closest('#te_kits tr[data-kit]'); if (!tr || e.target.closest('button,input')) return;
+    readRanges(); kitSel = Number(tr.dataset.kit); drawRanges();
+  });
+  $('#te_wd', m.el)?.addEventListener('click', (e) => { const c = e.target.closest('[data-wd]'); if (c) c.classList.toggle('on'); });
 
-  async function save() {
+  async function save(then) {
     readRanges(); readCons();
-    if (gridDirty) ranges = rangesFromGrid();
-    const v = formValues($('[data-pane="g"]', m.el));
+    if (gridDirty) ranges = [...ranges.filter(r => r.kit_id), ...rangesFromGrid()];
+    const v = { ...formValues($('[data-pane="g"]', m.el)), ...formValues($('[data-pane="m"]', m.el)), ...($('[data-pane="a"]', m.el) ? formValues($('[data-pane="a"]', m.el)) : {}) };
     v.code = v.code.trim(); v.name = v.name.trim();
     if (!v.code || !v.name) return toast('کد و نام الزامی است', 'bad');
     const dupe = Catalog.byCode.get(v.code.toUpperCase());
@@ -274,7 +360,15 @@ async function testEditor(id, isPanelNew, duplicate = false) {
     const cols = { code: v.code, num_code: nc, section: v.section || null, name: v.name, name_fa: v.name_fa || null, department_id: Number(v.department_id) || null, sample_type_id: Number(v.sample_type_id) || null,
       is_panel: isPanel ? 1 : 0, orderable: v.orderable, active: v.active, result_type: isPanel ? 'text' : v.result_type, options: options.length ? JSON.stringify(options) : null,
       unit: v.unit || null, decimals: num(v.decimals), ref_low: num(v.ref_low), ref_high: num(v.ref_high), ref_text: v.ref_text || null, critical_low: num(v.critical_low), critical_high: num(v.critical_high),
-      formula: v.formula || null, method: v.method || null, cost: Number(v.cost) || 0, tat_hours: Number(v.tat_hours) || 24, notes: v.notes || null };
+      formula: v.formula || null, method: v.method || null, cost: Number(v.cost) || 0, tat_hours: Number(v.tat_hours) || 24, notes: v.notes || null,
+      report_name: v.report_name?.trim() || null, description: v.description?.trim() || null, tube: v.tube?.trim() || null, sample_amount: v.sample_amount?.trim() || null,
+      loinc: v.loinc?.trim() || null, machine_code: v.machine_code?.trim() || null, price_ins: num(v.price_ins), tat_days: v.tat_days === '' || v.tat_days == null ? null : Math.max(0, Math.trunc(Number(v.tat_days))),
+      sex_only: v.sex_only || null, sendout_lab: v.sendout_lab?.trim() || null, sendout_cost: num(v.sendout_cost), side_column: v.side_column ? 1 : 0,
+      weekdays: $$('#te_wd .chip.on', m.el).map(c => c.dataset.wd).sort().join('') || null,
+      default_answer: v.default_answer?.trim() || null, ready_answers: (v.ready_answers || '').split('\n').map(x => x.trim()).filter(Boolean).join('\n') || null,
+      numeric_only: v.numeric_only ? 1 : 0, possible_low: num(v.possible_low), possible_high: num(v.possible_high),
+      active_kit_id: editing ? (activeKit && kits.some(k => k.id === activeKit) ? activeKit : null) : null };
+    if (cols.possible_low !== null && cols.possible_high !== null && cols.possible_low >= cols.possible_high) return toast('محدوده ممکن نادرست است (حداقل باید کمتر از حداکثر باشد)', 'bad');
     const price = Math.max(0, Number(v.price) || 0);
     const keys = Object.keys(cols); const vals = keys.map(k => cols[k] === undefined ? null : cols[k]);
     const stmts = [];
@@ -286,15 +380,72 @@ async function testEditor(id, isPanelNew, duplicate = false) {
       stmts.push([`INSERT INTO tests(${keys.join(',')}, price, sort) VALUES(${keys.map(() => '?').join(',')}, ?, ?)`, [...vals, price, sort]]);
     }
     const ref = editing ? id : '$id0';
-    if (!isPanel) ranges.filter(r => r.low !== null || r.high !== null || r.text).forEach(r => stmts.push(['INSERT INTO reference_ranges(test_id,sex,age_min_days,age_max_days,low,high,text) VALUES(?,?,?,?,?,?,?)', [ref, r.sex, r.age_min_days, r.age_max_days, r.low, r.high, r.text]]));
+    const kitIds = new Set(kits.map(k => k.id));
+    const nn = (x) => x === undefined ? null : x;
+    if (!isPanel) ranges.filter(r => (!r.kit_id || kitIds.has(r.kit_id)) && ['low', 'high', 'text', 'alarm_low', 'alarm_high', 'crit_low', 'crit_high'].some(k => r[k] !== null && r[k] !== undefined && r[k] !== ''))
+      .forEach(r => stmts.push(['INSERT INTO reference_ranges(test_id,sex,age_min_days,age_max_days,low,high,text,kit_id,alarm_low,alarm_high,crit_low,crit_high) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+        [ref, r.sex, nn(r.age_min_days), nn(r.age_max_days), nn(r.low), nn(r.high), nn(r.text), duplicate ? null : (r.kit_id || null), nn(r.alarm_low), nn(r.alarm_high), nn(r.crit_low), nn(r.crit_high)]]));
     if (isPanel) comps.forEach((c, i) => stmts.push(['INSERT INTO panel_items(panel_id,test_id,sort) VALUES(?,?,?)', [ref, c, i + 1]]));
     const seen = new Set(); cons.filter(c => c.qty_per_test > 0 && !seen.has(c.item_id) && seen.add(c.item_id)).forEach(c => stmts.push(['INSERT INTO test_consumables(test_id,item_id,qty_per_test) VALUES(?,?,?)', [ref, c.item_id, c.qty_per_test]]));
     const r = await lab.tx(stmts);
     const newId = editing ? id : r.ids[0];
     if (editing) await lab.setPrice(id, price);
     await lab.audit(editing ? 'update' : 'create', 'test', newId, v.code);
-    done(editing ? 'آزمایش به‌روزرسانی شد' : 'آزمایش جدید ذخیره شد');
+    done(editing ? 'آزمایش به‌روزرسانی شد' : 'آزمایش جدید ذخیره شد', typeof then === 'function' ? then : null);
   }
+}
+
+// kit (reagent brand / lot): description, company, lot, expiry, method
+function kitDialog(k, method) {
+  return new Promise(resolve => {
+    k = k || { name: '', company: '', lot_no: '', expiry: '', method: method || '', active: 1 };
+    const m = modal({ title: k.id ? 'ویرایش کیت' : 'کیت جدید', body: `<div class="formGrid" id="kF">
+      <label class="field span2"><span>شرح کیت <em>*</em></span><input name="name" value="${esc(k.name)}" class="ltr" placeholder="Pars Azmun — Glucose"></label>
+      <label class="field"><span>شرکت سازنده</span><input name="company" value="${esc(k.company || '')}"></label>
+      <label class="field"><span>Lot No</span><input name="lot_no" value="${esc(k.lot_no || '')}" class="ltr"></label>
+      <label class="field"><span>تاریخ انقضا</span><input type="date" name="expiry" value="${esc(k.expiry || '')}"></label>
+      <label class="field"><span>Method</span><input name="method" value="${esc(k.method || '')}" class="ltr"></label>
+      <label class="check"><input type="checkbox" name="active" ${k.active ? 'checked' : ''}> قابل استفاده</label></div>
+      ${k.id ? '' : '<p class="small muted">محدوده‌های عمومی آزمایش برای این کیت کپی می‌شوند؛ بعد آن‌ها را مطابق بروشور کیت اصلاح کنید.</p>'}`,
+      foot: `<button class="btn primary" id="k_ok">ذخیره کیت</button><button class="btn" data-no>انصراف</button>`, onClose: () => resolve(null) });
+    $('[data-no]', m.el).onclick = () => m.close();
+    $('#k_ok', m.el).onclick = () => {
+      const v = formValues($('#kF', m.el)); v.name = v.name.trim();
+      if (!v.name) return toast('شرح کیت الزامی است', 'bad');
+      ['company', 'lot_no', 'expiry', 'method'].forEach(f => { v[f] = String(v[f] || '').trim() || null; });
+      resolve(v); m.close();
+    };
+  });
+}
+
+// recalculate flag / reference of the results of a test in a date range with the current ranges (kit ranges included)
+async function applyRangesDlg(testId) {
+  const t = Catalog.byId.get(testId); if (!t) return;
+  const kits = Catalog.kitsOf(testId);
+  const m = modal({ title: `اعمال محدوده‌ها — ${esc(t.name)}`, body: `<div class="formGrid" id="arF">
+    <label class="field"><span>از تاریخ</span><input type="date" name="from" value="${isoDate(addDays(new Date(), -30))}"></label>
+    <label class="field"><span>تا تاریخ</span><input type="date" name="to" value="${isoDate()}"></label>
+    <label class="field"><span>بر اساس تاریخ</span><select name="basis"><option value="created_at">پذیرش</option><option value="completed_at">جوابدهی</option></select></label>
+    <label class="field"><span>کیت</span><select name="kit"><option value="result">کیت ثبت‌شده هر نتیجه</option>${kits.map(k => `<option value="${k.id}">${esc(k.name)}${k.lot_no ? ' · ' + esc(k.lot_no) : ''} (برای همه)</option>`).join('')}<option value="none">بدون کیت (محدوده عمومی)</option></select></label>
+    <label class="check full"><input type="checkbox" name="approved"> راپورهای تأیید شده هم تغییر کنند</label></div>
+    <p class="small muted">فلگ (H / L / HH / LL) و متن محدوده نتایج این آزمایش در این بازه با محدوده‌های فعلی دوباره حساب می‌شود.</p>`,
+    foot: `<button class="btn primary" id="ar_ok">اعمال</button><button class="btn" data-no>انصراف</button>` });
+  $('[data-no]', m.el).onclick = () => m.close();
+  $('#ar_ok', m.el).onclick = async () => {
+    try {
+      const v = formValues($('#arF', m.el)); const col = v.basis === 'completed_at' ? 'o.completed_at' : 'o.created_at';
+      const rows = await lab.all(`SELECT r.id, r.value, r.kit_id, o.age_days, p.sex FROM results r JOIN orders o ON o.id=r.order_id JOIN patients p ON p.id=o.patient_id
+        WHERE r.test_id=? AND date(${col}) BETWEEN ? AND ? ${v.approved ? '' : "AND o.status NOT IN ('approved','delivered')"}`, [testId, v.from, v.to]);
+      const stmts = rows.map(r => {
+        const kid = v.kit === 'result' ? (r.kit_id || t.active_kit_id || null) : v.kit === 'none' ? null : Number(v.kit);
+        const rg = resolveRange(t, r.sex, r.age_days, kid);
+        return ['UPDATE results SET flag=?, ref_display=?, kit_id=? WHERE id=?', [computeFlag(t, r.value, rg), refDisplay(t, rg), kid, r.id]];
+      });
+      if (stmts.length) await lab.tx(stmts);
+      await lab.audit('apply_ranges', 'test', testId, `${v.from}..${v.to} kit=${v.kit} n=${stmts.length}`);
+      toast(`${stmts.length} نتیجه دوباره محاسبه شد`, 'good'); m.close();
+    } catch (e) { errToast(e); }
+  };
 }
 
 // -------------------- per-test statistics --------------------

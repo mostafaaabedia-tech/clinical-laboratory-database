@@ -324,3 +324,31 @@ table.rt td.memo { white-space: pre-wrap; }
 .optPop .ddItem .code { min-width: 34px; font-weight: 700; }
 .lowBanner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .lowBanner .pill { cursor: pointer; }
+
+/* ---- v1.2: functions taken from the lab's previous program ---- */
+.recForm .c4 { grid-column: span 4; }
+.tiny { font-size: 10.5px; }
+.labInfo { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; font-size: 12.5px; }
+table.res th.prevC, table.res td.prevC { width: 84px; }
+table.res tr.alarm td { background: #fffbeb; }
+table.res tr.alarm td.val input { border-color: #f3c96b; }
+table.res tr.impossible td { background: #fde8e6; }
+table.res tr.impossible td.val input { border-color: #b42318; border-width: 2px; }
+table.rangeT input, table.rangeT select { padding: 4px 6px; }
+#te_kits tr.selRowOn td { background: var(--brand-soft); }
+.flagsBox { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; border: 1px solid #b9c6d3; border-radius: 6px; padding: 4px 10px; margin-bottom: 9px; font-size: calc(var(--rf, 11.5px) - .5px); }
+.flagsBox .ck { white-space: nowrap; font-weight: 700; }
+.flagsBox .cn { flex: 1; min-width: 200px; }
+table.rt td.nm.abn { color: #b42318; font-weight: 700; }
+table.rt td.nm.low { color: #175cd3; font-weight: 700; }
+table.rt .sub { font-size: 8.5px; color: #777; }
+table.rt td.pv { color: #666; }
+.doc.shade table.rt tr:nth-child(even) td { background: #f6f8fa; }
+.rcAnswer { border: 1.5px solid #111; border-radius: 6px; text-align: center; padding: 5px; margin-top: 8px; direction: rtl; font-size: 12px; }
+.rcAnswer b { font-size: 14px; }
+.tlUrg { background: #111; color: #fff; font-weight: 800; padding: 0 3px; margin-right: 3px; font-size: 8px; }
+.tlLab { font-size: 7px; font-weight: 700; border-bottom: 1px solid #ccc; margin-bottom: 1px; white-space: nowrap; overflow: hidden; }
+.statF { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important; }
+.totBox table.t td:last-child { text-align: left; font-variant-numeric: tabular-nums; }
+.sumBar { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 10px 4px; font-size: 13px; }
+.statPrint table.t { font-size: 10px; width: 100%; border-collapse: collapse; } .statPrint table.t th, .statPrint table.t td { border: 1px solid #ccc; padding: 2px 5px; }

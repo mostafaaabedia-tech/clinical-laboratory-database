@@ -20,6 +20,15 @@ First login: **admin / 1234** (you are asked to change it immediately).
 ## Features
 
 **Daily work**
+- **New in v1.2 — functions of the lab's previous program**
+  - **Kits** per test (description, company, Lot No, expiry, method). Each kit has its own **normal, alarm (warning), critical and possible** ranges by sex and age; every result keeps the kit it was measured with; "apply ranges to a date range" recalculates flags of earlier results.
+  - **Result entry:** previous answers **Prev 1–4** with dates, **trend chart** of the test, **ready answers** (suggested while typing) and **default answers** button, alarm ⚠ and "impossible value" marks (impossible / non-numeric values are rejected), kit / Lot / send-out lab under the test name, info strip (reception type, Fast / Non Fast, urgent, pregnant, sample state, answer date, clinical notes, received / **checked by** / approved by, print count) and previous / next reception buttons.
+  - **Reception types / insurance contracts:** free or insurance price list, **patient share %** (the organisation pays the rest), price increase %, automatic discount %, maximum tests per reception, required fields (tazkira, phone, insurance no…).
+  - **Reception:** tazkira and insurance number, reception type, **Fast / Non Fast**, sample state (hemolyzed, lipemic…), **pregnant**, **clinical notes**, automatic **answer date** (turnaround days + the weekdays a test is done), organisation share, discount reason, warnings for **repeated tests**, duplicate tazkira, tests for the other sex and expired kits.
+  - **Tests:** report name, description, tube, sample amount, LOINC, machine code, insurance price, send-out lab and cost, turnaround days, weekdays, "only for male / female", side column in the report.
+  - **Report:** ▲ ▼ arrows, coloured abnormal names, row shading, ☑ Fast / Non Fast / Urgent / Pregnant + Clinical Notes box, kit / Lot under the test name, up to 3 previous results, two signatures (Lab Technician / Lab in charge) with the user names, letter and line spacing. **Receipt:** answer-date box, weekday, reception type, organisation share. **Labels:** URGENT mark, lab name, date-time, English digits, archive label.
+  - **Patient statistics (آمار مراجعین):** date, hour and reception-number range, payment state (settled / debtor / creditor), urgent, answer complete / incomplete, discount (reason, giver), sex, patient group, reception type, send-out, cancelled, doctor(s), specialty, department(s), tests, user — 10 report kinds (standard, patient & organisation shares, by doctor, daily count & average, discounts by giver, cash / card payments, repeated tests, tests & departments, by reception type, busy hours) with a **totals page** when printed, CSV export.
+  - **Referring doctors' income** with **medical council number**, sort by income / patients / council number, percentage of amounts, commission and a **monthly trend chart** of referred patients.
 - **Reception (v1.1)** — compact form (name + father side by side, category + age on one row). Category is **نوزاد (newborn, ≤31 days) / خورد سال (child, ≤14 years) / آقا / خانم**, set automatically from the age. No birth date needed. **Enter moves to the next field**. Tests are picked by numeric code (401 = CBC) or name; doctors are picked by code or name. A returning patient's **lab history** is shown (with "repeat tests"), and a warning appears when the same name is already registered.
 - **Option results by code** — urine/stool fields accept the option code (1, 2, 3… or your own codes such as `32=Yellow`) or typed text. **"Star all"** marks every field `*` (= not needed, not printed); then fill only what is needed.
 - **Urine / stool report** — physical/chemical on one side and microscopic on the other side.
@@ -65,7 +74,9 @@ Files in [`database/`](database):
 | `departments`, `sample_types` | catalog structure |
 | `tests` | every test and panel: code, names, unit, ranges, critical values, formula, price, cost, TAT |
 | `panel_items` | panel → component mapping (nested panels allowed) |
-| `reference_ranges` | ranges by sex and age (days) |
+| `reference_ranges` | ranges by sex and age (days), per kit: normal, alarm, critical |
+| `kits` | reagent kits of a test: description, company, Lot No, expiry, method |
+| `reception_types` | free / insurance / staff contracts: patient share, price increase, discount, required fields |
 | `price_history` | every price change |
 | `patients`, `doctors` | people |
 | `orders`, `order_items` | receptions and the tests sold (price at time of sale) |
@@ -130,6 +141,8 @@ Project layout: `main.js` (Electron main + IPC), `preload.js` (secure bridge), `
 - **ثبت نتایج:** از «صف کاری» پذیرش را باز کنید؛ خانه‌های خاکستری خودکار محاسبه می‌شوند، H/L خودکار نشان داده می‌شود؛ «تکمیل نتایج» و سپس «تأیید نهایی» و چاپ A4.
 - **آزمایش‌ها و قیمت‌ها:** قیمت را مستقیم در جدول تغییر دهید یا «تغییر گروهی قیمت» را بزنید؛ آزمایش یا پنل جدید بسازید، محدوده مرجع بر اساس سن و جنس تعریف کنید؛ آیکون نمودار، فروش ماهانه هر آزمایش را نشان می‌دهد.
 - **فروش و آمار ماهانه:** فروش هر ماه، دریافت نقدی، پرفروش‌ترین آزمایش‌ها و جدول فروش هر آزمایش در هر ماه.
+- **کیت‌ها (نسخه ۱.۲):** در تعریف آزمایش زبانه «کیت‌ها و محدوده هشدار / بحران» — برای هر کیت (Lot، تاریخ انقضا، Method) محدوده نارمل، هشدار و بحرانی جدا. «محدوده ممکن» جلوی ثبت نتیجه اشتباه را می‌گیرد.
+- **انواع پذیرش و آمار:** صفحه «آمار مراجعین و انواع پذیرش» — نوع پذیرش آزاد / بیمه (سهم مریض و سهم مؤسسه)، آمار مراجعین با ده نوع گزارش و صفحه جمع کل، درآمد پزشکان معرف با نمبر نظام طبی و نمودار ترند.
 - **پشتیبان:** هر روز خودکار؛ از «تنظیمات و پشتیبان» می‌توانید نسخه پشتیبان بگیرید یا بازیابی کنید.
 
 Made by Mostafa Mesbah Aabedi · MIT License
