@@ -9,7 +9,7 @@ Pages.settings = {
     const chk = (k) => s[k] === '1' ? 'checked' : '';
     view.innerHTML = `
       <div class="pageHead"><div><h1>تنظیمات و پشتیبان‌گیری</h1><p>اطلاعات لابراتوار، راپور، شماره‌گذاری، مالی و دیتابیس</p></div></div>
-      <div class="tabs">${[['lab', 'اطلاعات لابراتوار'], ['report', 'راپور'], ['print', 'تنظیمات چاپ'], ['rules', 'قوانین پذیرش و جواب'], ['labels', 'رسید و لیبل'], ['share', 'ارسال به داکتر'], ['system', 'شماره‌گذاری و مالی'], ['data', 'دیتابیس و پشتیبان']].map(([k, n]) => `<button data-act="tab" data-t="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="tabs">${[['lab', 'اطلاعات لابراتوار'], ['report', 'راپور'], ['print', 'تنظیمات چاپ'], ['rules', 'قوانین پذیرش و جواب'], ['labels', 'رسید و لیبل'], ['share', 'ارسال به داکتر'], ['clinic', 'اتصال به پذیرش کلینیک'], ['system', 'شماره‌گذاری، مالی و رنگ'], ['data', 'دیتابیس و پشتیبان']].map(([k, n]) => `<button data-act="tab" data-t="${k}" class="${k === tab ? 'on' : ''}">${n}</button>`).join('')}</div>
       <div class="card" id="setForm">
       ${tab === 'lab' ? `<div class="formGrid">
         <label class="field span2"><span>نام لابراتوار (دری)</span><input name="lab_name" value="${v('lab_name')}"></label>
@@ -41,7 +41,13 @@ Pages.settings = {
         <label class="field"><span>PT کنترل (ثانیه)</span><input type="number" step="0.1" name="pt_control" value="${v('pt_control')}"></label></div>
         <p class="small muted">INR = (PT مریض ÷ PT کنترل) ^ ISI — مقادیر را از بروشور معرف خود وارد کنید.</p>` : ''}
       ${tab === 'print' ? `<div class="formGrid">
-        <label class="field"><span>فونت راپور</span><select name="print_font">${['Vazirmatn', 'Arial', 'Tahoma', 'Calibri', 'Segoe UI', 'Times New Roman', 'B Nazanin'].map(f => `<option ${s.print_font === f ? 'selected' : ''} style="font-family:'${f}'">${f}</option>`).join('')}</select></label>
+        <label class="field"><span>فونت راپور</span><input name="print_font" list="fontList" value="${v('print_font') || 'Vazirmatn'}"><datalist id="fontList">${['Vazirmatn', 'Viner Hand ITC', 'Arial', 'Tahoma', 'Calibri', 'Cambria', 'Segoe UI', 'Times New Roman', 'Georgia', 'Verdana', 'B Nazanin', 'B Lotus', 'B Mitra', 'B Titr', 'B Yekan', 'B Zar', 'IRANSans', 'Consolas'].map(f => `<option value="${f}">`).join('')}</datalist></label>
+        <label class="field"><span>نوع فونت</span><select name="report_font_weight">${[['normal', 'معمولی'], ['bold', 'ضخیم (Bold)'], ['light', 'نازک (Light)']].map(([k, n]) => `<option value="${k}" ${(s.report_font_weight || 'normal') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="field"><span>جدول راپور</span><select name="report_grid">${[['grid', 'با خطوط جدول (چارت)'], ['lines', 'فقط خطوط افقی'], ['none', 'بدون جدول']].map(([k, n]) => `<option value="${k}" ${(s.report_grid || 'grid') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="field"><span>جای عنوان بخش (Haematology…)</span><select name="report_title_align">${[['left', 'کنار (چپ)'], ['center', 'وسط'], ['right', 'کنار (راست)']].map(([k, n]) => `<option value="${k}" ${(s.report_title_align || 'left') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="field"><span>معلومات مریض بالای راپور</span><select name="report_patient_lang">${[['fa', 'فارسی (راست به چپ)'], ['en', 'انگلیسی']].map(([k, n]) => `<option value="${k}" ${(s.report_patient_lang || 'fa') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="check"><input type="checkbox" name="report_address_bottom" ${s.report_address_bottom !== '0' ? 'checked' : ''}> آدرس و تلفن پایین صفحه (نه بالای راپور)</label>
+        <label class="check"><input type="checkbox" name="report_print_time" ${chk('report_print_time')}> تاریخ و ساعت چاپ پایین راپور</label>
         <label class="field"><span>اندازه فونت (px)</span><input type="number" min="8" max="16" step="0.5" name="print_font_size" value="${v('print_font_size')}"></label>
         <label class="field"><span>اندازه صفحه</span><select name="print_page">${[['A4', 'A4 (210×297)'], ['A5', 'A5 (148×210)'], ['Letter', 'Letter'], ['Legal', 'Legal']].map(([k, n]) => `<option value="${k}" ${printPage() === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="field"><span>حاشیه صفحه (میلی‌متر)</span><input type="number" min="3" max="30" name="print_margin" value="${v('print_margin')}"></label>
@@ -86,7 +92,12 @@ Pages.settings = {
         <label class="field"><span>تقویم</span><select name="calendar"><option value="solar" ${s.calendar !== 'gregorian' ? 'selected' : ''}>هجری شمسی (حمل، ثور…)</option><option value="gregorian" ${s.calendar === 'gregorian' ? 'selected' : ''}>میلادی</option></select></label>
         <label class="field"><span>واحد پول</span><input name="currency" value="${v('currency')}" class="ltr"></label>
         <label class="field"><span>روش پرداخت پیش‌فرض</span><select name="default_payment">${Object.entries(PAY_METHODS).map(([k, n]) => `<option value="${k}" ${s.default_payment === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-        <label class="field"><span>مالیات (٪ از دریافت)</span><input type="number" min="0" step="any" name="tax_pct" value="${v('tax_pct')}"></label></div>` : ''}
+        <label class="field"><span>مالیات (٪ از دریافت)</span><input type="number" min="0" step="any" name="tax_pct" value="${v('tax_pct')}"></label>
+        <label class="field"><span>رنگ برنامه</span><span class="row"><input type="color" name="ui_color" value="${v('ui_color') || '#0f4c81'}" style="width:60px;height:40px;padding:2px"><button type="button" class="btn sm" data-act="colorReset">پیش‌فرض</button></span></label></div>` : ''}
+      ${tab === 'clinic' ? `<div class="infoBox">اگر لابراتوار با «سیستم جامع کلینیک» در یک شبکه کار می‌کند، آدرس سرور کلینیک و کاربر لابراتوار کلینیک را این‌جا بنویسید. در صفحه پذیرش دکمه «از پذیرش کلینیک» مریضانی را که پذیرش کلینیک به لابراتوار فرستاده یا داکتر برایشان آزمایش نوشته نشان می‌دهد؛ با یک کلیک نام، سن، جنس، تلفن و آزمایش‌ها پر می‌شود. فقط پذیرش‌ها به هم وصل است، نه بخش‌های دیگر.</div>
+        <div class="formGrid"><label class="field span2"><span>آدرس سرور کلینیک</span><input name="clinic_url" class="ltr" value="${v('clinic_url')}" placeholder="http://192.168.1.10:8750"></label>
+        <label class="field"><span>کاربر (لابراتوار کلینیک)</span><input name="clinic_user" class="ltr" value="${v('clinic_user')}"></label><label class="field"><span>رمز</span><input type="password" name="clinic_pass" value="${v('clinic_pass')}"></label></div>
+        <div class="row" style="margin-top:10px"><button type="button" class="btn" data-act="testClinic">${icon('check', 16)} آزمایش اتصال</button></div>` : ''}
       ${tab === 'data' ? `<div class="infoBox">فایل دیتابیس: <span class="ltr small">${esc(info.dbFile)}</span><br>نسخه برنامه ${esc(info.version)} · Electron ${esc(info.electron)}</div>
         <div class="row" style="margin-bottom:14px"><button class="btn primary" data-act="backup">${icon('download', 16)} تهیه نسخه پشتیبان</button><button class="btn" data-act="restore">${icon('upload', 16)} بازیابی از فایل</button><button class="btn" data-act="folder">باز کردن پوشه پشتیبان‌ها</button></div>
         <div class="formGrid"><label class="check"><input type="checkbox" name="auto_backup" ${chk('auto_backup')}> پشتیبان‌گیری خودکار روزانه (هنگام باز شدن برنامه)</label>
@@ -107,6 +118,8 @@ Pages.settings = {
         const p = await lab.restore(); if (p) { toast('بازیابی انجام شد. دوباره وارد شوید.', 'good'); setTimeout(() => location.reload(), 900); }
       },
       folder: () => lab.openBackupFolder(),
+      colorReset: () => { $('[name="ui_color"]', view).value = '#0f4c81'; },
+      testClinic: async () => { const vals = formValues($('#setForm', view)); await lab.saveSettings({ clinic_url: vals.clinic_url || '', clinic_user: vals.clinic_user || '', clinic_pass: vals.clinic_pass || '' }); await loadSettings(); const r = await lab.clinic('GET', '/api/lab/referrals?status=open'); toast(`اتصال به کلینیک برقرار است ✓ (${r.length} مریض فرستاده شده)`, 'good'); },
       testBot: async () => { const vals = formValues($('#setForm', view)); await lab.saveSettings({ telegram_bot_token: vals.telegram_bot_token || '' }); await loadSettings(); const c = await lab.telegramUpdates(); toast(`اتصال ربات برقرار است ✓ (${c.length} گفتگو)`, 'good'); },
       printPreview: async () => {
         const vals = formValues($('#setForm', view)); for (const k of Object.keys(vals)) if ($(`[name="${k}"]`, view).type === 'checkbox') vals[k] = vals[k] ? '1' : '0';

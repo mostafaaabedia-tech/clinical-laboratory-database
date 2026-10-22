@@ -4,6 +4,12 @@
 async function loadSettings() { App.settings = await lab.settings(); applyBranding(); }
 function applyBranding() {
   const s = App.settings;
+  // colour of the program (Settings → numbering & finance → colour)
+  const c = /^#[0-9a-f]{6}$/i.test(s.ui_color || '') ? s.ui_color : '';
+  const mix = (hex, to, t) => '#' + [1, 3, 5].map(i => { const a = parseInt(hex.substr(i, 2), 16), b = parseInt(to.substr(i, 2), 16); return Math.round(a + (b - a) * t).toString(16).padStart(2, '0'); }).join('');
+  const r = document.documentElement.style;
+  if (c) { r.setProperty('--brand', c); r.setProperty('--brand-2', mix(c, '#ffffff', .15)); r.setProperty('--brand-soft', mix(c, '#ffffff', .9)); r.setProperty('--brand-ink', mix(c, '#000000', .3)); }
+  else ['--brand', '--brand-2', '--brand-soft', '--brand-ink'].forEach(k => r.removeProperty(k));
   $('#brandName').textContent = s.lab_name || 'لابراتوار';
   $('#brandNameEn').textContent = s.lab_name_en || 'Laboratory Information System';
   const logo = s.lab_logo ? `<img src="${s.lab_logo}" alt="">` : icon('flask', 22);

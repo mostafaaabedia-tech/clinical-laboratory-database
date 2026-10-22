@@ -138,10 +138,11 @@ Pages.labstats = {
         <label class="field"><span>درصد نمایش مبالغ</span><input id="i_pct" type="number" value="100" min="0" max="100"></label>
         <label class="field span2"><span>جستجوی پزشک</span><input id="i_q"></label></div>
         <div class="row" style="margin-top:10px;justify-content:flex-start"><button class="btn primary" data-act="runI">${icon('search', 16)} تأیید</button></div></div>
-        <div class="grid" style="margin-top:14px"><div class="card"><div class="tableWrap" style="max-height:620px" id="iOut"></div></div>
-          <div class="card"><h2>نمودار ترند معرفی مریض توسط پزشک (ماهانه)</h2><select id="i_doc" style="margin-bottom:8px"></select><div class="chartBox"><canvas id="iC"></canvas></div><div class="small muted">۱۲ ماه گذشته</div></div></div>`;
+        <div class="card" style="margin-top:14px"><h2>درآمد، تخفیف و خالص هر پزشک</h2><div class="tableWrap" style="max-height:620px" id="iOut"></div></div>
+        <div class="grid g2" style="margin-top:14px"><div class="card"><h2>مقایسه پزشکان (درآمد · تخفیف · خالص)</h2><div class="chartBox tall"><canvas id="iD"></canvas></div><div class="small muted">۱۲ پزشک اول همین لیست — هر رنگ یک مقدار جدا</div></div>
+          <div class="card"><h2>روند ماهانه</h2><div class="row" style="margin-bottom:8px;justify-content:flex-start"><select id="i_doc" style="width:auto"></select><select id="i_metric" style="width:auto">${optH([['money', 'درآمد · تخفیف · خالص'], ['c', 'تعداد معرفی'], ['g', 'فقط درآمد'], ['d', 'فقط تخفیف'], ['n', 'فقط خالص']], 'money')}</select></div><div class="chartBox tall"><canvas id="iC"></canvas></div><div class="small muted">۱۲ ماه گذشته</div></div></div>`;
       $('#i_q', view).addEventListener('input', debounce(drawIncome, 150)); $('#i_sort', view).onchange = drawIncome; $('#i_pct', view).oninput = debounce(drawIncome, 200);
-      $('#i_doc', view).onchange = drawTrend;
+      $('#i_doc', view).onchange = drawTrend; $('#i_metric', view).onchange = drawTrend;
     };
     const runIncome = async () => {
       const w = ["o.status <> 'cancelled'", 'date(o.created_at) BETWEEN ? AND ?'], P = [$('#i_from', view).value || isoDate(), $('#i_to', view).value || isoDate()];
@@ -154,7 +155,7 @@ Pages.labstats = {
           COUNT(DISTINCT o.patient_id) patients, COUNT(*) orders, SUM(o.gross) income, SUM(IFNULL(o.org_share,0)) org, SUM(o.discount) discount, SUM(o.net) net, SUM(o.paid) paid
           FROM orders o LEFT JOIN doctors d ON d.id=o.doctor_id WHERE ${W} GROUP BY k`, P),
         lab.all(`SELECT IFNULL(o.doctor_id,0) k, COUNT(*) c FROM order_items i JOIN orders o ON o.id=i.order_id WHERE ${W} GROUP BY k`, P),
-        lab.all(`SELECT IFNULL(o.doctor_id,0) k, date(o.created_at) d, COUNT(*) c FROM orders o WHERE o.status<>'cancelled' AND date(o.created_at)>=? GROUP BY k, d`, [tFrom])
+        lab.all(`SELECT IFNULL(o.doctor_id,0) k, date(o.created_at) d, COUNT(*) c, SUM(o.gross) g, SUM(o.discount) dc, SUM(o.net) n FROM orders o WHERE o.status<>'cancelled' AND date(o.created_at)>=? GROUP BY k, d`, [tFrom])
       ]);
       const tm = new Map(tests.map(x => [x.k, x.c]));
       rows.forEach(r => { r.tests = tm.get(r.k) || 0; r.commission = r2((r.income - r.org - r.discount) * r.commission_pct / 100); });
@@ -172,13 +173,21 @@ Pages.labstats = {
         <tfoot><tr><td colspan="3"><b>مجموع</b></td><td>${S('patients')}</td><td>${S('orders')}</td><td>${S('tests')}</td><td class="num">${money(S('income') * pct)}</td><td class="num">${money(S('org') * pct)}</td><td class="num">${money(S('discount') * pct)}</td><td class="num">${money(S('net') * pct)}</td><td class="num">${money(S('commission') * pct)}</td></tr></tfoot></table>`;
       const cur = $('#i_doc', view).value;
       $('#i_doc', view).innerHTML = optH([['all', 'همه پزشکان'], ...inc.rows.filter(r => r.k).map(r => [r.k, r.name])], cur || 'all');
+      inc.shown = rows; inc.pct = pct;
       drawTrend();
     };
+    // two separate charts: doctors side by side (three separate bars each) and the monthly trend — the values are never stacked together
     const drawTrend = () => {
       if (!inc) return;
-      const k = $('#i_doc', view).value || 'all';
-      const vals = inc.months.map(m => inc.trend.filter(x => (k === 'all' ? x.k : String(x.k) === k) && monthKey(x.d)?.key === m.key).reduce((a, x) => a + x.c, 0));
-      destroyCharts(); barChart($('#iC', view), inc.months.map(m => m.short), [{ label: 'تعداد معرفی', data: vals }]);
+      destroyCharts();
+      const top = (inc.shown || inc.rows).slice(0, 12), pct = inc.pct || 1;
+      barChart($('#iD', view), top.map(r => r.name.length > 18 ? r.name.slice(0, 17) + '…' : r.name), [
+        { label: 'درآمد', data: top.map(r => r2(r.income * pct)), color: '#2a78d6' }, { label: 'تخفیف', data: top.map(r => r2(r.discount * pct)), color: '#eb6834' }, { label: 'خالص', data: top.map(r => r2(r.net * pct)), color: '#1baf7a' }], { money: true });
+      const k = $('#i_doc', view).value || 'all', metric = $('#i_metric', view).value || 'money';
+      const sum = (m, f) => inc.trend.filter(x => (k === 'all' ? true : String(x.k) === k) && monthKey(x.d)?.key === m.key).reduce((a, x) => a + (x[f] || 0), 0);
+      const L = { c: 'تعداد معرفی', g: 'درآمد', dc: 'تخفیف', n: 'خالص' }, C = { c: '#6250d6', g: '#2a78d6', dc: '#eb6834', n: '#1baf7a' };
+      const fields = metric === 'money' ? ['g', 'dc', 'n'] : [metric === 'd' ? 'dc' : metric];
+      barChart($('#iC', view), inc.months.map(m => m.short), fields.map(f => ({ label: L[f], data: inc.months.map(m => r2(sum(m, f) * (f === 'c' ? 1 : pct))), color: C[f] })), { money: metric !== 'c' });
     };
 
     // ================================================================ reception types / contracts

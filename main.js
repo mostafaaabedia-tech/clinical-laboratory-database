@@ -161,6 +161,7 @@ function registerIpc() {
   handle('settings:set', (obj) => {
     requireLogin();
     db.transaction(() => { for (const [k, v] of Object.entries(obj || {})) db.db.run('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)', [k, v == null ? '' : String(v)]); });
+    if (Object.keys(obj || {}).some(k => k.startsWith('clinic_'))) clinicToken = null;
     db.audit(currentUser, 'update', 'settings', null, Object.keys(obj || {}).join(',')); return true;
   });
 
@@ -237,6 +238,28 @@ function registerIpc() {
     await telegramCall(token, 'sendDocument', { chat_id: String(chatId), caption: String(caption || '').slice(0, 1000) }, { field: 'document', path: filePath, name: path.basename(filePath) });
     db.audit(currentUser, 'send_telegram', 'report', null, `${chatId} ${path.basename(filePath)}`);
     return true;
+  });
+  // link to the clinic system's reception (only the laboratory reception is connected)
+  let clinicToken = null;
+  const clinicReq = (method, urlPath, body, token) => new Promise((resolve, reject) => {
+    const base = String(db.getSetting('clinic_url', '') || '').trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//.test(base)) return reject(new Error('آدرس سرور کلینیک در تنظیمات نوشته نشده است'));
+    const u = new URL(base + urlPath); const mod = u.protocol === 'https:' ? require('https') : require('http');
+    const data = body ? JSON.stringify(body) : null;
+    const rq = mod.request(u, { method, timeout: 8000, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) } }, (res) => {
+      let buf = ''; res.on('data', (c) => { buf += c; }); res.on('end', () => { try { const j = JSON.parse(buf); if (!j.ok) return reject(Object.assign(new Error(j.error || 'خطا از سرور کلینیک'), { status: res.statusCode })); resolve(j.data); } catch (e) { reject(new Error('پاسخ نامعتبر از سرور کلینیک')); } });
+    });
+    rq.on('timeout', () => rq.destroy(new Error('سرور کلینیک جواب نمی‌دهد'))); rq.on('error', (e) => reject(new Error('اتصال به سرور کلینیک ممکن نشد: ' + e.message)));
+    if (data) rq.write(data); rq.end();
+  });
+  handle('clinic:call', async (method, urlPath, body) => {
+    requireLogin();
+    const p = String(urlPath || '');
+    if (!/^\/api\/(lab\/referrals|lab\/referral-done\/\d+|list\/lab_requests|lab\/req\/x|patient-basic\/\d+)(\?|$)/.test(p)) throw new Error('مسیر مجاز نیست');
+    const login = async () => { const r = await clinicReq('POST', '/api/login', { username: db.getSetting('clinic_user', ''), password: db.getSetting('clinic_pass', ''), station: 'lab' }); clinicToken = r.token; };
+    if (!clinicToken) await login();
+    try { return await clinicReq(String(method || 'GET').toUpperCase(), p, body, clinicToken); }
+    catch (e) { if (e.status === 401) { await login(); return clinicReq(String(method || 'GET').toUpperCase(), p, body, clinicToken); } throw e; }
   });
   handle('telegram:updates', async () => {
     requireLogin();

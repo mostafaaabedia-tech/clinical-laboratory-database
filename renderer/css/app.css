@@ -352,3 +352,21 @@ table.rt td.pv { color: #666; }
 .totBox table.t td:last-child { text-align: left; font-variant-numeric: tabular-nums; }
 .sumBar { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 10px 4px; font-size: 13px; }
 .statPrint table.t { font-size: 10px; width: 100%; border-collapse: collapse; } .statPrint table.t th, .statPrint table.t td { border: 1px solid #ccc; padding: 2px 5px; }
+
+/* v1.3: report options (grid / title alignment / Persian patient box), department pages in result entry */
+.doc.report .rSec h3 { text-align: var(--ta, left); }
+.doc.report.g-lines table.rt th, .doc.report.g-lines table.rt td { border-left: 0; border-right: 0; }
+.doc.report.g-none table.rt th, .doc.report.g-none table.rt td { border: 0; }
+.doc.report.g-none table.rt th { border-bottom: 1px solid #b9c6d3; }
+.doc.report.g-none .rSec h3 { border: 0; border-bottom: 1px solid #b9c6d3; }
+.ptBox.fa { direction: rtl; text-align: right; font-family: Vazirmatn, Tahoma, sans-serif; }
+.ptBox.fa .ltr { direction: ltr; unicode-bidi: isolate; }
+.docFoot .addr { flex: 1; text-align: center; }
+.deptTabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.deptTabs button { border: 1px solid var(--line-2, #cbd5e1); background: var(--surface, #fff); color: inherit; padding: 7px 14px; border-radius: 999px; cursor: pointer; font-family: inherit; }
+.deptTabs button.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+.deptTabs button.done .cnt { color: #087f5b; font-weight: 700; }
+.deptTabs button.on.done .cnt { color: #fff; }
+.deptTabs .cnt { font-size: 11px; margin-right: 4px; opacity: .85; }
+.resGroup.deptPage { display: none; }
+.resGroup.deptPage.on { display: block; }

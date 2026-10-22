@@ -20,6 +20,12 @@ First login: **admin / 1234** (you are asked to change it immediately).
 ## Features
 
 **Daily work**
+- **New in v1.3**
+  - Report: any installed font (incl. *Viner Hand ITC*, B Nazanin, B Lotus …), normal / bold / light text, table with grid, horizontal lines only or no grid, section titles left / centre / right, patient box in Persian (right to left) or English, address and phone at the bottom of the page, print date and time optional (off by default).
+  - Result entry: one page per department (Haematology, Biochemistry, Hormones …) with a counter per page; *Enter* on the last field opens the next page.
+  - Referring doctors' income: two separate charts — doctors side by side (income, discount and net as separate bars) and the monthly trend (income · discount · net, or the number of patients) — so the values are not drawn on top of each other.
+  - Programme colour can be chosen in Settings.
+  - Link to the reception of *Advanced Clinical Database*: in Settings → «اتصال به پذیرش کلینیک» enter the clinic server and the laboratory user; the reception then shows the patients sent by the clinic's reception (and tests written by clinic doctors) and fills name, age, sex, phone and tests with one click. Only the receptions are linked.
 - **New in v1.2 — functions of the lab's previous program**
   - **Kits** per test (description, company, Lot No, expiry, method). Each kit has its own **normal, alarm (warning), critical and possible** ranges by sex and age; every result keeps the kit it was measured with; "apply ranges to a date range" recalculates flags of earlier results.
   - **Result entry:** previous answers **Prev 1–4** with dates, **trend chart** of the test, **ready answers** (suggested while typing) and **default answers** button, alarm ⚠ and "impossible value" marks (impossible / non-numeric values are rejected), kit / Lot / send-out lab under the test name, info strip (reception type, Fast / Non Fast, urgent, pregnant, sample state, answer date, clinical notes, received / **checked by** / approved by, print count) and previous / next reception buttons.

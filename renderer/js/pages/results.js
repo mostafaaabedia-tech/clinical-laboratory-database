@@ -65,6 +65,9 @@ async function resultEntry(view, orderId) {
     o.print_count && ['چاپ', `${o.print_count} بار`]
   ].filter(Boolean);
 
+  // one page per department (Haematology, Biochemistry, Hormones …): Enter on the last field opens the next page
+  const depts = [...new Set(groups.map(g => g.dept?.name || g.title || 'Tests'))];
+  const pgOf = (g) => depts.indexOf(g.dept?.name || g.title || 'Tests');
   const inputFor = (t) => {
     const r = data.results.get(t.id); const v = r ? r.value : '';
     const dis = locked ? 'disabled' : '';
@@ -86,7 +89,8 @@ async function resultEntry(view, orderId) {
       ${locked && o.status !== 'cancelled' && can('approve') ? `<button class="btn" data-act="unapprove">${icon('unlock', 16)} لغو تأیید برای اصلاح</button>` : ''}</div></div>
     ${info.length ? `<div class="labInfo">${info.map(([k, v]) => `<span>${k ? `<small class="muted">${k}:</small> ` : ''}${v}</span>`).join('')}</div>` : ''}
     ${locked ? '<div class="warnBox">این راپور تأیید شده و قفل است. برای اصلاح، ابتدا تأیید را لغو کنید.</div>' : '<div class="infoBox small">Enter = خانه بعدی · خانه‌های گزینه‌ای (مثل ادرار) را با <b>کد</b> (مثلاً 2) یا تایپ متن پر کنید · «*» = لازم نیست، در راپور چاپ نمی‌شود (با Enter بقیه خانه‌های خالی همان گروه هم * می‌شوند) · «ستاره همه» همه را * می‌کند تا فقط نتایج لازم را وارد کنید · خانه‌های خاکستری خودکار محاسبه می‌شوند.</div>'}
-    ${groups.map(g => `<div class="resGroup"><div class="resGroupHead"><span>${esc(g.title)} <small class="muted">${esc(g.dept?.name || '')}</small></span>
+    ${depts.length > 1 ? `<div class="deptTabs" id="dTabs">${depts.map((d, i) => `<button type="button" data-pg="${i}" class="${i === 0 ? 'on' : ''}">${esc(d)} <span class="cnt" data-pcnt="${i}"></span></button>`).join('')}<button type="button" data-pg="all">همه</button></div>` : ''}
+    ${groups.map(g => `<div class="resGroup ${depts.length > 1 ? 'deptPage' : ''} ${depts.length > 1 && pgOf(g) === 0 ? 'on' : ''}" data-pg="${pgOf(g)}"><div class="resGroupHead"><span>${esc(g.title)} <small class="muted">${esc(g.dept?.name || '')}</small></span>
       ${!locked && g.items.some(t => t.result_type !== 'numeric' && t.ref_text) ? `<button class="btn sm" data-act="normal" data-g="${g.key}">طبیعی (Normal)</button>` : ''}</div>
       <table class="res" data-g="${g.key}"><thead><tr><th>Test</th><th>Result</th><th>Flag</th><th>Unit</th><th>Reference</th>${Array.from({ length: nPrev }, (_, i) => `<th class="prevC">Prev ${i + 1}</th>`).join('')}<th></th></tr></thead><tbody>
       ${g.items.map(t => { const pl = data.prevs.get(t.id) || []; const r = data.results.get(t.id); const kit = Catalog.kitById.get(kitOf(t));
@@ -162,6 +166,13 @@ async function resultEntry(view, orderId) {
   view.addEventListener('focusin', (e) => { const el = e.target; if (el.matches && el.matches('[data-tid]')) { if (el.value.trim() === '*') el.select(); if (el.dataset.opt && !locked) openPop(el); else closePop(); } });
   view.addEventListener('focusout', (e) => { const el = e.target; if (el.matches && el.matches('[data-opt]')) { resolveOpt(el, false); setTimeout(() => { if (popFor === el) closePop(); }, 120); recalc(); } });
 
+  const showPg = (pg) => {
+    $$('#dTabs [data-pg]', view).forEach(b => b.classList.toggle('on', b.dataset.pg === String(pg)));
+    $$('.deptPage', view).forEach(d => d.classList.toggle('on', pg === 'all' || d.dataset.pg === String(pg)));
+  };
+  const pageCounts = () => depts.forEach((d, i) => { const ins = $$(`.deptPage[data-pg="${i}"] [data-tid]`, view).filter(x => !x.classList.contains('calc')); const c = $(`[data-pcnt="${i}"]`, view); if (c) { const f = ins.filter(x => String(x.value).trim()).length; c.textContent = `${f}/${ins.length}`; c.parentElement.classList.toggle('done', ins.length > 0 && f === ins.length); } });
+  $('#dTabs', view)?.addEventListener('click', (e) => { const b = e.target.closest('[data-pg]'); if (b) showPg(b.dataset.pg); });
+  view.addEventListener('input', pageCounts); setTimeout(pageCounts, 0);
   if (!locked) {
     view.addEventListener('input', (e) => { if (e.target.matches('[data-tid]')) { if (e.target.dataset.opt) openPop(e.target); recalc(); } });
     view.addEventListener('keydown', (e) => {
@@ -176,9 +187,12 @@ async function resultEntry(view, orderId) {
       if (e.key === 'Enter' && el.value.trim() === '*') {
         $$('[data-tid]', el.closest('table')).forEach(x => { if (!x.readOnly && x.tagName !== 'BUTTON' && !x.value.trim()) x.value = '*'; });
       }
-      const list = inputs().filter(x => !x.readOnly);
+      const list = inputs().filter(x => !x.readOnly && !x.disabled && x.offsetParent !== null);
       const i = list.indexOf(el); const nx = list[e.key === 'ArrowUp' ? i - 1 : i + 1];
-      if (nx) { nx.focus(); nx.select && nx.select(); }
+      if (nx) { nx.focus(); nx.select && nx.select(); return; }
+      // end of this department page → next page
+      const pg = Number(el.closest('[data-pg]')?.dataset.pg);
+      if (e.key === 'Enter' && depts.length > 1 && !$('#dTabs [data-pg="all"].on', view) && pg < depts.length - 1) { showPg(pg + 1); const f = inputs().find(x => !x.readOnly && !x.disabled && x.offsetParent !== null); if (f) { f.focus(); f.select && f.select(); } }
     });
     view.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save('in_progress').catch(errToast); } });
   }

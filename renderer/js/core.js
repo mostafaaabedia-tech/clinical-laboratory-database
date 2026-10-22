@@ -158,7 +158,9 @@ function reportDocStyle() {
   const fs = Math.max(8, Math.min(16, Number(s.print_font_size) || 11.5));
   const font = s.print_font && s.print_font !== 'Vazirmatn' ? `'${String(s.print_font).replace(/'/g, '')}', Vazirmatn, sans-serif` : 'Vazirmatn, Arial, sans-serif';
   const ls = Math.max(0, Math.min(3, Number(s.report_letter_spacing) || 0)), lh = Math.max(1, Math.min(2.2, Number(s.report_line_height) || 1.35));
-  return `width:${w}mm;min-height:${h}mm;padding:${top}mm ${m}mm ${m + 2}mm;--rf:${fs}px;font-family:${font};letter-spacing:${ls}px;line-height:${lh}`;
+  const fw = s.report_font_weight === 'bold' ? 700 : s.report_font_weight === 'light' ? 300 : 400;
+  const ta = ['left', 'center', 'right'].includes(s.report_title_align) ? s.report_title_align : 'left';
+  return `width:${w}mm;min-height:${h}mm;padding:${top}mm ${m}mm ${m + 2}mm;--rf:${fs}px;--ta:${ta};font-family:${font};font-weight:${fw};letter-spacing:${ls}px;line-height:${lh}`;
 }
 
 // ---------------- status ----------------

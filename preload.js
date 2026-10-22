@@ -52,5 +52,6 @@ contextBridge.exposeInMainWorld('lab', {
   showFile: (p) => call('share:showFile', p),
   copyText: (t) => call('share:copy', t),
   telegramSend: (chatId, file, caption) => call('telegram:send', chatId, file, caption),
-  telegramUpdates: () => call('telegram:updates')
+  telegramUpdates: () => call('telegram:updates'),
+  clinic: (method, path, body) => call('clinic:call', method, path, body)
 });

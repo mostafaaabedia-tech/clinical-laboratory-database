@@ -9,7 +9,7 @@ Pages.reception = {
     const reasons = String(App.settings.discount_reasons || '').split('\n').map(x => x.trim()).filter(Boolean);
     view.innerHTML = `
       <div class="pageHead"><div><h1>پذیرش مریض</h1><p>ثبت مریض، انتخاب آزمایش‌ها و دریافت پول — با <span class="kbd">Enter</span> به خانه بعدی بروید</p></div>
-        <div class="toolbar"><button class="btn" data-act="reset">${icon('plus', 16)} فرم جدید</button></div></div>
+        <div class="toolbar">${App.settings.clinic_url ? `<button class="btn" data-act="fromClinic">${icon('download', 16)} از پذیرش کلینیک</button>` : ''}<button class="btn" data-act="reset">${icon('plus', 16)} فرم جدید</button></div></div>
       <div class="recGrid">
         <div>
         <div class="card">
@@ -317,6 +317,7 @@ Pages.reception = {
         sendout: st.sel.some(id => [Catalog.byId.get(id), ...Catalog.leaves(id)].some(t => t?.sendout_lab))
       });
       toast(`پذیرش ${res.order_no} ثبت شد`, 'good');
+      if (st.clinicRef) { lab.clinic('POST', '/api/lab/referral-done/' + st.clinicRef, {}).catch(() => { }); st.clinicRef = null; }
       const data = await loadOrderFull(res.id);
       if (after === 'receipt') await printDoc(receiptHTML(data));
       if (after === 'labels') await printDoc(labelsHTML(data));
@@ -335,7 +336,33 @@ Pages.reception = {
       browse: () => browseTests((ids) => ids.forEach(add)),
       histReport: (el) => reportPreview(Number(el.dataset.id)),
       repeat: (el) => { String(el.dataset.tids || '').split(',').map(Number).filter(id => Catalog.byId.get(id)?.active).forEach(id => { if (!st.sel.includes(id)) add(id); }); },
-      pickPt: (el) => { const p = ($('#ptHistory', view)._rows || []).find(r => r.id === Number(el.dataset.pid)); if (p) fillPatient(p); }
+      pickPt: (el) => { const p = ($('#ptHistory', view)._rows || []).find(r => r.id === Number(el.dataset.pid)); if (p) fillPatient(p); },
+      // patients sent by the clinic's reception, or tests written by a clinic doctor: name, age, sex, phone and tests are filled in
+      fromClinic: async () => {
+        const [refs, reqs] = await Promise.all([lab.clinic('GET', '/api/lab/referrals?status=open'), lab.clinic('GET', '/api/list/lab_requests?eq.status=requested&limit=200')]);
+        const m = modal({ title: 'مریضان از پذیرش کلینیک', size: 'wide', body: `<div class="small muted" style="margin-bottom:8px">روی مریض کلیک کنید تا فرم پذیرش پر شود.</div>
+          ${[...refs.map(f => ({ k: 'ref', id: f.id, name: f.full_name, father: f.father_name, sub: 'فرستاده پذیرش' + (f.note ? ' · ' + f.note : ''), code: f.code, f })), ...reqs.map(r => ({ k: 'req', id: r.id, name: r.full_name, father: r.father_name, sub: (r.doctor_name || '') + ' · ' + (r.tests || ''), code: r.lab_code, r }))]
+            .map((x, i) => `<div class="selRow" data-i="${i}" style="cursor:pointer"><span class="codeTag">${esc(x.code)}</span><span style="flex:1"><b>${esc(x.name)}</b> <small class="muted">ولد ${esc(x.father || '—')}</small><div class="small muted">${esc(x.sub)}</div></span><span class="pill ${x.k === 'ref' ? 'info' : 'warn'}">${x.k === 'ref' ? 'از پذیرش' : 'نسخه داکتر'}</span></div>`).join('') || '<div class="empty">مریضی فرستاده نشده ✓</div>'}` });
+        const all = [...refs.map(f => ({ k: 'ref', f })), ...reqs.map(r => ({ k: 'req', r }))];
+        m.body.onclick = async (e) => {
+          const row = e.target.closest('[data-i]'); if (!row) return; const x = all[Number(row.dataset.i)];
+          try {
+            let p, tests = [], note = '';
+            if (x.k === 'ref') { p = x.f; note = [x.f.note, x.f.doctor_name ? 'داکتر: ' + x.f.doctor_name : ''].filter(Boolean).join(' · '); }
+            else { const full = await lab.clinic('GET', '/api/lab/req/x?id=' + x.r.id); p = full.patient || x.r; tests = (full.items || []).map(i => String(i.code || (full.tests || []).find(t => t.id === i.test_id)?.code || '').toUpperCase()).filter(Boolean); note = [full.doctor_name ? 'داکتر: ' + full.doctor_name : '', full.note].filter(Boolean).join(' · '); }
+            reset();
+            const same = await lab.get('SELECT * FROM patients WHERE full_name=? AND IFNULL(father_name,\'\')=? LIMIT 1', [p.full_name, p.father_name || '']);
+            if (same) fillPatient(same);
+            else { $('#f_name', view).value = p.full_name || ''; $('#f_father', view).value = p.father_name || ''; $('#f_phone', view).value = p.phone || ''; $('#f_addr', view).value = p.address || ''; st.birth = p.birth_date || null; setTypeFor(setAgeFromBirth(st.birth), p.sex || 'M'); syncPreg(); }
+            if (note) $('#f_notes', view).value = note;
+            const miss = [];
+            tests.forEach(c => { const t = Catalog.byCode.get(c); if (t && t.active) add(t.id); else miss.push(c); });
+            st.clinicRef = x.k === 'ref' ? x.f.id : null;
+            m.close(); renderSel(); warnings();
+            toast(miss.length ? `این آزمایش‌ها در لیست لابراتوار پیدا نشد: ${miss.join('، ')}` : 'معلومات از کلینیک آمد ✓', miss.length ? 'bad' : 'good');
+          } catch (err) { errToast(err); }
+        };
+      }
     });
     view.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save('receipt').catch(errToast); } });
 

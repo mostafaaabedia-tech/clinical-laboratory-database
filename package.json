@@ -1,7 +1,7 @@
 {
   "name": "clinical-laboratory-database",
   "productName": "Clinical Laboratory System",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Desktop Laboratory Information System (LIS) with a full SQLite database: reception, results, reports, test catalog & prices, sales charts, finance, inventory.",
   "main": "main.js",
   "author": "Mostafa Mesbah Aabedi",

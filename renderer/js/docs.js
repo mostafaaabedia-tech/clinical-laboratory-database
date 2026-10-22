@@ -23,14 +23,22 @@ async function loadOrderFull(id) {
   return { order, patient, doctor, items, results: res, payments, prev, prevs, rtype };
 }
 
-function labHeader(compact = false) {
+function labHeader(compact = false, forReport = false) {
   const s = App.settings;
   const logo = s.lab_logo ? `<img src="${s.lab_logo}" alt="">` : '';
+  const bottom = forReport && s.report_address_bottom !== '0';   // the address goes to the bottom of the report
   return `<div class="docHead">${logo}<div class="labName"><h1>${esc(s.lab_name_en || '')}</h1><h2>${esc(s.lab_name || '')}</h2>
-    ${compact ? '' : `<div>${[s.lab_address, s.lab_phone ? 'Tel: ' + s.lab_phone : '', s.lab_email].filter(Boolean).map(esc).join(' · ')}</div>`}</div></div>`;
+    ${compact || bottom ? '' : `<div>${[s.lab_address, s.lab_phone ? 'Tel: ' + s.lab_phone : '', s.lab_email].filter(Boolean).map(esc).join(' · ')}</div>`}</div></div>`;
 }
 
 function patientBox(o, p, doc) {
+  // Persian, right to left (default) or English
+  if (App.settings.report_patient_lang !== 'en') {
+    const fa = [['نام مریض', `<bdi>${esc(p.full_name)}</bdi>`], ['ولد', `<bdi>${esc(p.father_name || '—')}</bdi>`], ['شماره پذیرش', `<b class="ltr">${esc(o.order_no)}</b>`],
+      ['سن / جنس', `${esc(ageLabel(o.age_days))} / ${esc(catFa(o, p))}`], ['داکتر معرف', `<bdi>${esc(doc ? doc.name : 'خودمراجعه')}</bdi>`], ['کد مریض', `<span class="ltr">${esc(p.mrn)}</span>`],
+      ['تاریخ پذیرش', `<span class="ltr">${esc(fmtDateTimeNum(o.created_at))}</span>`], ['تاریخ جواب', `<span class="ltr">${esc(o.approved_at ? fmtDateTimeNum(o.approved_at) : (o.completed_at ? fmtDateTimeNum(o.completed_at) : '—'))}</span>`], ['تلفن', `<span class="ltr">${esc(p.phone || '—')}</span>`]];
+    return `<div class="ptBox fa">${fa.map(c => `<div><span>${c[0]}:</span> <b>${c[1]}</b></div>`).join('')}</div>`;
+  }
   const cells = [
     ['Patient', `<bdi>${esc(p.full_name)}</bdi>`], ['Order No', `<b>${esc(o.order_no)}</b>`], ['MRN', esc(p.mrn)],
     ['Father', `<bdi>${esc(p.father_name || '—')}</bdi>`], ['Age / Sex', `${ageLabelEn(o.age_days)} / ${catEn(o, p)}`], ['Phone', esc(p.phone || '—')],
@@ -110,7 +118,8 @@ function reportHTML(data) {
   const comments = [...results.values()].filter(r => r.comment).map(r => `<div>• <b>${esc(repName(Catalog.byId.get(r.test_id) || { name: '' }))}:</b> ${esc(r.comment)}</div>`).join('');
   const names = S.report_sign_names !== '0';
   const signL = S.report_sign_left || 'Lab Technician', signR = S.report_sign_right || S.report_signature || 'Lab in charge';
-  return `<div class="doc report ${S.report_row_shade === '1' ? 'shade' : ''}" style="${reportDocStyle()}">${S.print_letterhead === '1' ? '' : labHeader()}
+  const grid = ['lines', 'none'].includes(S.report_grid) ? 'g-' + S.report_grid : 'g-grid';
+  return `<div class="doc report ${grid} ${S.report_row_shade === '1' ? 'shade' : ''}" style="${reportDocStyle()}">${S.print_letterhead === '1' ? '' : labHeader(false, true)}
     <div style="display:flex;justify-content:space-between;align-items:center"><div class="docTitle" style="text-align:left">LABORATORY REPORT</div><div>${barcodeSVG(o.order_no, { height: 26, module: 1.1 })}</div></div>
     ${patientBox(o, p, doc)}
     ${flagsBoxHTML(o)}
@@ -118,7 +127,7 @@ function reportHTML(data) {
     ${comments ? `<div class="rSec" style="font-size:11px"><b>Comments:</b>${comments}</div>` : ''}
     <div style="font-size:9.5px;color:#555;margin-top:6px">${S.report_arrows !== '0' ? '▲ = High, ▼ = Low' : 'H = High, L = Low'}, HH/LL = Critical value, * = Abnormal. ${o.status !== 'approved' && o.status !== 'delivered' ? '<b style="color:#b42318">PRELIMINARY — NOT APPROVED</b>' : ''}</div>
     <div class="sign"><div>${esc(signL)}${names && (o.checked_by || o.completed_at) ? `<br><small>${esc(o.checked_by || '')}</small>` : ''}</div><div>${esc(signR)}${names && o.approved_by ? `<br><small>Approved by ${esc(o.approved_by)}</small>` : ''}</div></div>
-    <div class="docFoot"><span>${esc(S.report_footer || '')}</span><span>Printed ${esc(fmtDateTimeNum(new Date()))}</span></div></div>`;
+    <div class="docFoot"><span>${esc(S.report_footer || '')}</span>${S.report_address_bottom !== '0' ? `<span class="addr">${[S.lab_address, S.lab_phone ? 'Tel: ' + S.lab_phone : '', S.lab_email].filter(Boolean).map(esc).join(' · ')}</span>` : ''}${S.report_print_time === '1' ? `<span>Printed ${esc(fmtDateTimeNum(new Date()))}</span>` : ''}</div></div>`;
 }
 
 function receiptHTML(data) {
